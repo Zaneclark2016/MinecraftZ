@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ</title>
+<title>MinecraftZ v10 - Hard Mode</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
   body { overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -50,20 +50,103 @@
     text-align: center; cursor: pointer; z-index: 10;
   }
   #overlay h1 { font-size: 38px; margin-bottom: 10px; color: #ffd166; }
-  #overlay p { font-size: 16px; max-width: 520px; line-height: 1.6; color: #eee; }
+  #overlay p { font-size: 16px; max-width: 560px; line-height: 1.6; color: #eee; }
+  .btn {
+    background: #4a4a4a; color: #fff; border: 2px solid #999; border-radius: 6px;
+    padding: 9px 22px; font-size: 16px; cursor: pointer; margin: 6px; font-family: inherit;
+  }
+  .btn:hover { background: #666; border-color: #ffd166; }
+  .btn.primary { background: #3d8f3d; border-color: #8fd68f; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  #settings, #invScreen {
+    display: none; position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,0.78);
+    color: #fff; align-items: center; justify-content: center; overflow: auto;
+  }
+  .panel {
+    background: #2b2b2b; border: 3px solid #777; border-radius: 10px; padding: 18px 22px;
+    width: min(94vw, 460px); max-height: 92vh; overflow: auto; cursor: default;
+  }
+  .panel h2 { color: #ffd166; margin-bottom: 12px; font-size: 22px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 9px 0; font-size: 14px; }
+  .row select, .row input[type=range] { width: 190px; }
+  .row select { background: #444; color: #fff; border: 1px solid #888; padding: 4px; border-radius: 4px; }
+  .row .val { width: 44px; text-align: right; color: #ffd166; }
+  .row.off { opacity: 0.4; }
+  #hearts { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); display: none; gap: 1px; align-items: center; pointer-events: none; width: 400px; }
+  #hearts .h { font-size: 20px; line-height: 20px; color: #3a1a1a; text-shadow: 0 0 2px #000; }
+  #hearts .h.full { color: #e33; }
+  #hearts .h.lost { color: #1c1c1c; opacity: 0.35; }
+  #hearts .h.half { text-shadow: none; filter: drop-shadow(0 0 1px #000); background: linear-gradient(90deg, #e33 50%, #3a1a1a 50%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #armorRow { margin-left: auto; display: flex; gap: 2px; }
+  #armorRow img { width: 20px; height: 20px; image-rendering: pixelated; }
+  #mineBar { position: fixed; top: 54%; left: 50%; transform: translateX(-50%); width: 80px; height: 6px; background: rgba(0,0,0,0.6); display: none; pointer-events: none; }
+  #mineBar div { height: 100%; width: 0; background: #ffd166; }
+  #flash { position: fixed; inset: 0; background: rgba(200,0,0,0.35); opacity: 0; pointer-events: none; transition: opacity 0.35s; }
+  #death { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(120,0,0,0.55); color: #fff; font-size: 40px; pointer-events: none; }
+  .invgrid { display: grid; grid-template-columns: repeat(9, 44px); gap: 3px; margin: 6px 0; }
+  .islot {
+    width: 44px; height: 44px; background: #444; border: 2px solid #666; border-radius: 4px;
+    position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .islot:hover { border-color: #ffd166; }
+  .islot.sel { border-color: #ffd166; background: #5a5230; }
+  .islot img { width: 30px; height: 30px; image-rendering: pixelated; pointer-events: none; }
+  .islot .cnt { position: absolute; right: 2px; bottom: 0; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 0 #000; pointer-events: none; }
+  .recipe { display: flex; align-items: center; gap: 8px; padding: 5px 8px; margin: 4px 0; background: #383838; border-radius: 6px; font-size: 13px; }
+  .recipe img { width: 26px; height: 26px; image-rendering: pixelated; }
+  .recipe .need { flex: 1; color: #bbb; }
+  .recipe.no { opacity: 0.45; }
+  .recipe .btn { padding: 3px 12px; font-size: 13px; margin: 0; }
+  #cursorItem { position: fixed; width: 30px; height: 30px; pointer-events: none; z-index: 30; display: none; image-rendering: pixelated; }
+  #clock { color: #ffd166; }
 </style>
 </head>
 <body>
 <div id="overlay">
   <h1>MinecraftZ</h1>
-  <p>Click anywhere to play!<br>
-  <b>WASD</b> Move | <b>Space</b> Jump / Climb Up | <b>Shift</b> Crouch / Climb Down<br>
-  <b>E</b> or <b>Right-Click</b> Place Block / Ride Minecart | <b>Left-Click</b> or <b>Q</b> Break Block<br>
-  <b>F</b> Dismount Minecart | <b>N</b> 3D Mouse-Aim Noclip | <b>R</b> New World</p>
+  <div><button class="btn primary" id="playBtn">Play</button><button class="btn" id="settingsBtn">Settings</button></div>
+  <p>
+  <b>WASD</b> Move | <b>Space</b> Jump / Climb Up | <b>Shift</b> Climb Down<br>
+  <b>Right-Click</b> / <b>E</b> Place Block, Ride Minecart, Equip Armor<br>
+  <b>Left-Click</b> (hold in Survival) / <b>Q</b> Break Block or Attack<br>
+  <b>C</b> or <b>I</b> Inventory &amp; Crafting | <b>1-9</b> / Wheel Hotbar<br>
+  <b>F</b> Dismount Minecart | <b>N</b> Noclip (Creative) | <b>R</b> New World (Creative)</p>
 </div>
+<div id="settings">
+  <div class="panel">
+    <h2>Settings</h2>
+    <div class="row"><span>Game Mode</span><select id="sMode"><option value="creative">Creative</option><option value="survival">Survival</option></select></div>
+    <div style="font-size:12px;color:#aaa;margin:-4px 0 6px">Creative and Survival each keep their own world. Switching never mixes them.</div>
+    <div class="row"><span>Difficulty</span><select id="sDiff"><option value="peaceful">Peaceful</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
+    <div style="font-size:12px;color:#aaa;margin:-4px 0 6px">Normal: each death lowers your max hearts (4, then 2, then 1), then you die for real and start over. Hard: one death erases everything.</div>
+    <div class="row" id="rowMobs"><span>Mobs (Survival)</span><input type="checkbox" id="sMobs"></div>
+    <div class="row"><span>Day Length</span><input type="range" id="sDay" min="2" max="20" step="1"><span class="val" id="vDay"></span></div>
+    <div class="row"><span>Render Distance</span><input type="range" id="sRender" min="2" max="8" step="1"><span class="val" id="vRender"></span></div>
+    <div class="row"><span>Field of View</span><input type="range" id="sFov" min="50" max="110" step="1"><span class="val" id="vFov"></span></div>
+    <div class="row"><span>Mouse Sensitivity</span><input type="range" id="sSens" min="20" max="250" step="5"><span class="val" id="vSens"></span></div>
+    <div class="row"><span>Fog</span><input type="checkbox" id="sFog"></div>
+    <div class="row"><span>Show Info HUD</span><input type="checkbox" id="sHud"></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="settingsBack">Done</button><button class="btn" id="settingsNew">Apply &amp; New World</button></div>
+  </div>
+</div>
+<div id="invScreen">
+  <div class="panel" style="width:min(96vw,520px)">
+    <h2 id="invTitle">Inventory</h2>
+    <div id="armorSlots" style="display:flex;gap:6px;align-items:center;font-size:13px;color:#bbb"></div>
+    <div id="invGrid" class="invgrid"></div>
+    <div id="invExtra"></div>
+    <div style="text-align:center;margin-top:10px"><button class="btn" id="invClose">Close (C)</button></div>
+  </div>
+</div>
+<img id="cursorItem" alt="">
+<div id="hearts"></div>
+<div id="mineBar"><div></div></div>
+<div id="flash"></div>
+<div id="death"><div id="deathTitle">You Died</div><div id="deathMsg" style="font-size:16px;margin-top:8px;max-width:520px;text-align:center">Respawning...</div></div>
 <div id="hud">
   <div><b>FPS:</b> <span id="fps">60</span> | <b>Pos:</b> <span id="pos">0, 0, 0</span></div>
   <div><b>Mode:</b> <span id="mode">Walking</span> | <b>Seed:</b> <span id="seed">0</span></div>
+  <div id="clock"></div>
   <div><b>Controls:</b> [E / Right-Click] Place or Ride Cart | [Left-Click] Break | [F] Exit Cart | [N] Noclip</div>
 </div>
 <div id="crosshair"></div>
@@ -77,11 +160,14 @@ const gl = canvas.getContext('webgl2', { antialias: false });
 if (!gl) alert('WebGL2 is required to run MinecraftZ.');
 
 // Texture Atlas (16x16 pixel tiles, painted procedurally)
-const T = 16, COLS = 8, ROWS = 4;
+const T = 16, COLS = 8, ROWS = 5;
 const TILE = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, GLASS: 3, LOG_SIDE: 4, LOG_TOP: 5, PLANKS: 6, STONE: 7,
   LEAVES: 8, LADDER_WOOD: 9, TIE: 10, RAIL: 11, CART_OUT: 12, CART_IN: 13, WHEEL: 14, BLACK: 15,
-  LADDER_ICON: 16, TRACK_ICON: 17, CART_ICON: 18
+  LADDER_ICON: 16, TRACK_ICON: 17, CART_ICON: 18,
+  STICK_ICON: 19, SWORD_ICON: 20, HELMET_ICON: 21, CHEST_ICON: 22, PICK_ICON: 23,
+  Z_SKIN: 24, Z_SHIRT: 25, Z_PANTS: 26, Z_FACE: 27,
+  TORCH_SIDE: 28, TORCH_TOP: 29, TORCH_ICON: 30, AXE_ICON: 31, SAND: 32, CACTUS_SIDE: 33, CACTUS_TOP: 34
 };
 
 const atlasCanvas = document.createElement('canvas');
@@ -227,6 +313,100 @@ atlasCanvas.height = ROWS * T;
     return [0, 0, 0, 0];
   });
 
+  // Pixel-art helper for icons: map of char -> rgb, rows of 16 chars
+  const art = (tile, rows, pal) => paint(tile, (x, y) => {
+    const c = rows[y] ? rows[y][x] : '.';
+    return pal[c] ? pal[c] : [0, 0, 0, 0];
+  });
+  const WD = [150, 105, 60], WL = [190, 140, 82], WK = [105, 72, 40], ST = [120, 120, 126], SL = [170, 170, 176];
+
+  art(TILE.STICK_ICON, [
+    '................', '..............WD', '.............WD.', '............WD..',
+    '...........WD...', '..........WD....', '.........WD.....', '........WD......',
+    '.......WD.......', '......WD........', '.....WD.........', '....WD..........',
+    '...WD...........', '..WD............', '................', '................'
+  ].map(r => r.replace(/WD/g, 'dd')), { d: WD });
+
+  art(TILE.SWORD_ICON, [
+    '..............ll', '.............lll', '............lll.', '...........lll..',
+    '..........lll...', '.........lll....', '..l.....lll.....', '...l...lll......',
+    '....l.lll.......', '.....lll........', '.....kll........', '....kk.l........',
+    '...kk...........', '..kk............', '.kk.............', '................'
+  ], { l: WL, k: WK });
+
+  art(TILE.HELMET_ICON, [
+    '................', '................', '....llllllll....', '...lwwwwwwwl....',
+    '..lwwwwwwwwwl...', '..lwwwwwwwwwl...', '..lwwwwwwwwwl...', '..lwwwwwwwwwl...',
+    '..lwwl....lwwl..', '..lwl......lwl..', '..lk........kl..', '................',
+    '................', '................', '................', '................'
+  ].map(r => r.slice(0, 16)), { l: WK, w: WL, k: WD });
+
+  art(TILE.CHEST_ICON, [
+    '................', '..ww........ww..', '.wwww......wwww.', '.wwwwwwwwwwwwww.',
+    '.wwwwwwwwwwwwww.', '..wwwwwwwwwwww..', '...wwwkwwkwwww..', '...wwwwkkwwwww..',
+    '...wwwwwwwwwww..', '...wwwwwwwwwww..', '...wwwwwwwwwww..', '...wwwwwwwwwww..',
+    '...kkkkkkkkkkk..', '................', '................', '................'
+  ], { w: WL, k: WK });
+
+  art(TILE.PICK_ICON, [
+    '................', '....ppppppp.....', '...ppppppppp....', '..pp...k...pp...',
+    '..p....k....p...', '.......k........', '.......k........', '.......k........',
+    '.......k........', '.......k........', '.......k........', '.......k........',
+    '.......k........', '................', '................', '................'
+  ], { p: WL, k: WK });
+
+  // Zombie skin tiles
+  paint(TILE.Z_SKIN, () => { const n = jit(8); return [78 + n, 142 + n, 70 + n]; });
+  paint(TILE.Z_SHIRT, () => { const n = jit(7); return [40 + n, 150 + n, 160 + n]; });
+  paint(TILE.Z_PANTS, () => { const n = jit(7); return [52 + n, 52 + n, 140 + n]; });
+  paint(TILE.Z_FACE, (x, y) => {
+    const n = jit(6);
+    const eye = (y >= 6 && y <= 7) && ((x >= 3 && x <= 5) || (x >= 10 && x <= 12));
+    const mouth = (y >= 11 && y <= 12) && x >= 5 && x <= 10;
+    if (eye) return [20, 20, 20];
+    if (mouth) return [40, 80, 40];
+    return [78 + n, 142 + n, 70 + n];
+  });
+
+  // ---- v9 tiles ----
+  paint(TILE.SAND, (x, y) => {
+    const n = jit(7), s = rnd() < 0.07 ? -16 : 0;
+    return [219 + n + s, 205 + n + s, 158 + n * 0.8 + s];
+  });
+  paint(TILE.CACTUS_SIDE, (x, y) => {
+    const n = jit(6);
+    let c = [56 + n, 124 + n, 44 + n * 0.6];
+    if (x % 4 === 0) c = [c[0] - 18, c[1] - 24, c[2] - 12];
+    if (x % 4 === 2 && y % 4 === 1) c = [205, 225, 170];
+    return c;
+  });
+  paint(TILE.CACTUS_TOP, (x, y) => {
+    const n = jit(5);
+    const edge = x === 0 || y === 0 || x === 15 || y === 15;
+    const mid = x >= 5 && x <= 10 && y >= 5 && y <= 10;
+    if (edge) return [34 + n, 92 + n, 30 + n];
+    if (mid) return [86 + n, 160 + n, 66 + n];
+    return [60 + n, 130 + n, 46 + n];
+  });
+  paint(TILE.TORCH_SIDE, (x, y) => {
+    const n = jit(8);
+    if (y < 5) return [255, 205 - (y < 2 ? 0 : 40) + n, 70 + n];
+    return [124 + n, 88 + n, 48 + n];
+  });
+  paint(TILE.TORCH_TOP, () => { const n = jit(10); return [255, 215 + n, 90 + n]; });
+  art(TILE.TORCH_ICON, [
+    '................', '.......ff.......', '......ffff......', '......ffff......',
+    '.......ff.......', '.......bb.......', '.......bb.......', '.......bb.......',
+    '.......bb.......', '.......bb.......', '.......bb.......', '.......bb.......',
+    '.......bb.......', '.......bb.......', '................', '................'
+  ], { f: [255, 205, 70], b: WD });
+  art(TILE.AXE_ICON, [
+    '................', '..........aaaa..', '.........aaaaaa.', '........kaaaaaa.',
+    '.......kk.aaaa..', '......kk........', '.....kk.........', '....kk..........',
+    '...kk...........', '..kk............', '.kk.............', '................',
+    '................', '................', '................', '................'
+  ], { a: WL, k: WK });
+
   ctx.putImageData(img, 0, 0);
 })();
 
@@ -259,25 +439,97 @@ const ITEMS = [
   { id: 6, name: 'Stone',    top: TILE.STONE,       side: TILE.STONE,      bot: TILE.STONE,     icon: TILE.STONE,       solid: true,  transparent: false },
   { id: 7, name: 'Ladder',   top: TILE.LADDER_WOOD, side: TILE.LADDER_WOOD, bot: TILE.LADDER_WOOD, icon: TILE.LADDER_ICON, solid: false, transparent: true  },
   { id: 8, name: 'Track',    top: TILE.RAIL,        side: TILE.TIE,        bot: TILE.TIE,       icon: TILE.TRACK_ICON,  solid: false, transparent: true  },
-  { id: 9, name: 'Minecart', top: TILE.CART_IN,     side: TILE.CART_OUT,   bot: TILE.CART_OUT,  icon: TILE.CART_ICON,   solid: false, transparent: false }
+  { id: 9, name: 'Minecart', top: TILE.CART_IN,     side: TILE.CART_OUT,   bot: TILE.CART_OUT,  icon: TILE.CART_ICON,   solid: false, transparent: false },
+  { id: 10, name: 'Leaves',  top: TILE.LEAVES,      side: TILE.LEAVES,     bot: TILE.LEAVES,    icon: TILE.LEAVES,      solid: true,  transparent: false },
+  { id: 11, name: 'Torch',   top: TILE.TORCH_TOP,   side: TILE.TORCH_SIDE, bot: TILE.TORCH_SIDE, icon: TILE.TORCH_ICON,  solid: false, transparent: true  },
+  { id: 12, name: 'Cactus',  top: TILE.CACTUS_TOP,  side: TILE.CACTUS_SIDE, bot: TILE.CACTUS_TOP, icon: TILE.CACTUS_SIDE, solid: true,  transparent: true  },
+  { id: 13, name: 'Sand',    top: TILE.SAND,        side: TILE.SAND,       bot: TILE.SAND,      icon: TILE.SAND,        solid: true,  transparent: false }
 ];
 
 const BLOCK_MAP = {};
 ITEMS.forEach(it => BLOCK_MAP[it.id] = it);
-BLOCK_MAP[10] = { id: 10, name: 'Leaves', top: TILE.LEAVES, side: TILE.LEAVES, bot: TILE.LEAVES, icon: TILE.LEAVES, solid: true, transparent: false };
 
+// Non-placeable items (tools, armor, materials)
+const ITEM_DEFS = {
+  20: { id: 20, name: 'Stick',            icon: TILE.STICK_ICON },
+  21: { id: 21, name: 'Wooden Sword',     icon: TILE.SWORD_ICON,  tool: 'sword', damage: 4 },
+  22: { id: 22, name: 'Wooden Helmet',    icon: TILE.HELMET_ICON, armor: 'head',  points: 2 },
+  23: { id: 23, name: 'Wooden Chestplate', icon: TILE.CHEST_ICON, armor: 'chest', points: 4 },
+  24: { id: 24, name: 'Wooden Pickaxe',   icon: TILE.PICK_ICON,   tool: 'pick' },
+  25: { id: 25, name: 'Wooden Axe',       icon: TILE.AXE_ICON,    tool: 'axe', damage: 3 }
+};
+const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25];
+function itemInfo(id) { return ITEM_DEFS[id] || BLOCK_MAP[id]; }
+function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[id] && ITEM_DEFS[id].armor ? 1 : 64; }
+
+// ---------- Settings ----------
+const SETTINGS_KEY = 'minecraftz_settings_v7';
+const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
+const isSurvival = () => settings.mode === 'survival';
+
+// ---------- Inventory ----------
+const emptySlot = () => ({ id: 0, count: 0 });
+const inv = Array.from({ length: 36 }, emptySlot);   // survival inventory, slots 0-8 are the hotbar
+const armor = { head: 0, chest: 0 };
+const creativeBar = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(id => ({ id, count: 1 }));
 let selectedSlot = 0;
+let hp = 20, maxHp = 20, deaths = 0;
+
+function getBar() { return isSurvival() ? inv.slice(0, 9) : creativeBar; }
+function heldSlot() { return isSurvival() ? inv[selectedSlot] : creativeBar[selectedSlot]; }
+function heldId() { return heldSlot().id; }
+function countItem(id) { let n = 0; for (const s of inv) if (s.id === id) n += s.count; return n; }
+function addItem(id, count = 1) {
+  const max = stackMax(id);
+  for (const s of inv) if (count > 0 && s.id === id && s.count < max) { const a = Math.min(max - s.count, count); s.count += a; count -= a; }
+  for (const s of inv) if (count > 0 && s.id === 0) { const a = Math.min(max, count); s.id = id; s.count = a; count -= a; }
+  return count;
+}
+function removeItem(id, count) {
+  for (let i = 35; i >= 0 && count > 0; i--) {
+    const s = inv[i];
+    if (s.id === id) { const a = Math.min(s.count, count); s.count -= a; count -= a; if (s.count === 0) s.id = 0; }
+  }
+}
+function armorPoints() {
+  let p = 0;
+  for (const k of ['head', 'chest']) if (armor[k]) p += itemInfo(armor[k]).points;
+  return p;
+}
+
 const hotbarEl = document.getElementById('hotbar');
+const heartsEl = document.getElementById('hearts');
+function renderHearts() {
+  heartsEl.style.display = isSurvival() ? 'flex' : 'none';
+  if (!isSurvival()) return;
+  let html = '';
+  for (let i = 0; i < 10; i++) {
+    if (i * 2 >= maxHp) { html += '<span class="h lost">&#9829;</span>'; continue; }
+    const v = hp - i * 2;
+    html += `<span class="h ${v >= 2 ? 'full' : v === 1 ? 'half' : ''}">&#9829;</span>`;
+  }
+  html += '<span id="armorRow">';
+  for (const k of ['head', 'chest']) if (armor[k]) html += `<img src="${tileIconURL(itemInfo(armor[k]).icon)}" alt="">`;
+  heartsEl.innerHTML = html + '</span>';
+}
 function renderHotbar() {
   hotbarEl.innerHTML = '';
-  ITEMS.forEach((it, idx) => {
+  getBar().forEach((s, idx) => {
     const div = document.createElement('div');
     div.className = 'slot' + (idx === selectedSlot ? ' active' : '');
-    div.innerHTML = `<span class="slot-num">${idx + 1}</span>
-      <div class="slot-icon" style="background-image:url(${tileIconURL(it.icon)});${it.id === 3 ? 'background-color:rgba(178,235,242,0.45);' : ''}"></div>
-      <span>${it.name}</span>`;
+    const it = s.id ? itemInfo(s.id) : null;
+    let html = `<span class="slot-num">${idx + 1}</span>`;
+    if (it) {
+      html += `<div class="slot-icon" style="background-image:url(${tileIconURL(it.icon)});${s.id === 3 ? 'background-color:rgba(178,235,242,0.45);' : ''}"></div>`;
+      html += `<span style="font-size:9px;text-align:center;line-height:1.1">${it.name}</span>`;
+      if (isSurvival() && s.count > 1) html += `<span style="position:absolute;right:4px;top:3px;font-weight:bold;font-size:12px;text-shadow:1px 1px 0 #000">${s.count}</span>`;
+    }
+    div.innerHTML = html;
     hotbarEl.appendChild(div);
   });
+  renderHearts();
 }
 renderHotbar();
 
@@ -286,34 +538,49 @@ const vsSrc = `#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec2 aUV;
 layout(location=2) in float aLight;
+layout(location=3) in float aBlock;
 uniform mat4 uProj;
 uniform mat4 uView;
 uniform vec3 uOffset;
+uniform float uYaw;
+uniform float uFogStart;
+uniform float uFogEnd;
 out vec2 vUV;
 out float vLight;
+out float vBlock;
 out float vFog;
 void main() {
-  vec4 worldPos = vec4(aPos + uOffset, 1.0);
+  float cy = cos(uYaw), sy = sin(uYaw);
+  vec3 rp = vec3(cy * aPos.x + sy * aPos.z, aPos.y, -sy * aPos.x + cy * aPos.z);
+  vec4 worldPos = vec4(rp + uOffset, 1.0);
   vec4 viewPos = uView * worldPos;
   gl_Position = uProj * viewPos;
   vUV = aUV;
   vLight = aLight;
+  vBlock = aBlock;
   float dist = length(viewPos.xyz);
-  vFog = clamp((dist - 55.0) / 45.0, 0.0, 1.0);
+  vFog = clamp((dist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
 }`;
 
 const fsSrc = `#version 300 es
 precision mediump float;
 in vec2 vUV;
 in float vLight;
+in float vBlock;
 in float vFog;
 uniform sampler2D uTex;
+uniform float uBright;
+uniform vec3 uSky;
+uniform float uFlash;
 out vec4 fragColor;
 void main() {
   vec4 t = texture(uTex, vUV);
   if (t.a < 0.5) discard;
-  vec3 sky = vec3(0.53, 0.81, 0.92);
-  vec3 col = mix(t.rgb * vLight, sky, vFog);
+  float lm = max(uBright, vBlock);
+  vec3 warm = mix(vec3(1.0), vec3(1.15, 0.92, 0.68), clamp(vBlock - uBright, 0.0, 1.0));
+  vec3 col = t.rgb * vLight * lm * warm;
+  col = mix(col, vec3(1.0, 0.15, 0.15), uFlash);
+  col = mix(col, uSky, vFog);
   fragColor = vec4(col, 1.0);
 }`;
 
@@ -333,6 +600,12 @@ gl.useProgram(prog);
 const uProjLoc = gl.getUniformLocation(prog, 'uProj');
 const uViewLoc = gl.getUniformLocation(prog, 'uView');
 const uOffsetLoc = gl.getUniformLocation(prog, 'uOffset');
+const uYawLoc = gl.getUniformLocation(prog, 'uYaw');
+const uFogStartLoc = gl.getUniformLocation(prog, 'uFogStart');
+const uFogEndLoc = gl.getUniformLocation(prog, 'uFogEnd');
+const uBrightLoc = gl.getUniformLocation(prog, 'uBright');
+const uSkyLoc = gl.getUniformLocation(prog, 'uSky');
+const uFlashLoc = gl.getUniformLocation(prog, 'uFlash');
 gl.uniform1i(gl.getUniformLocation(prog, 'uTex'), 0);
 
 gl.enable(gl.DEPTH_TEST);
@@ -341,21 +614,26 @@ gl.enable(gl.CULL_FACE);
 // Vertex layout: x, y, z, u, v, light (6 floats = 24 bytes)
 function setupAttribs() {
   gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
   gl.enableVertexAttribArray(1);
-  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 24, 12);
+  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 28, 12);
   gl.enableVertexAttribArray(2);
-  gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 24, 20);
+  gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 20);
+  gl.enableVertexAttribArray(3);
+  gl.vertexAttribPointer(3, 1, gl.FLOAT, false, 28, 24);
 }
 
 // World & Chunk System
 const CHUNK_SIZE = 16;
 const CHUNK_HEIGHT = 48;
-const RENDER_DIST = 4;
+let RENDER_DIST = 4;
 let worldSeed = Math.floor(Math.random() * 100000);
 document.getElementById('seed').textContent = worldSeed;
 
 const chunks = new Map();
+const edits = new Map();   // chunkKey -> Map(index -> blockId): every player edit, kept even when a chunk unloads
+let worldDirty = false;
+const torches = new Map();   // "x,y,z" -> [x,y,z] for every placed torch, kept even when its chunk unloads
 const buildQueue = [];
 
 function hash2(x, z) {
@@ -378,19 +656,52 @@ function terrainHeight(wx, wz) {
 
 function chunkKey(cx, cz) { return `${cx},${cz}`; }
 
+// Biomes: everything beyond about 8 chunks (128 blocks) from the start is desert,
+// with an uneven edge and the occasional green patch.
+const DESERT_START = 128;
+function desertAmount(wx, wz) {
+  if (smoothNoise(wx * 0.025 + 500, wz * 0.025 + 500) > 0.82) return -1;
+  const d = Math.hypot(wx - 8, wz - 8);
+  const edge = DESERT_START + (smoothNoise(wx * 0.03, wz * 0.03) - 0.5) * 40;
+  return d - edge;
+}
+function biomeAt(wx, wz) { return desertAmount(wx, wz) >= 0 ? 'Desert' : 'Plains'; }
+
 function generateChunkData(cx, cz) {
   const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
       const wx = cx * CHUNK_SIZE + x;
       const wz = cz * CHUNK_SIZE + z;
-      const h = terrainHeight(wx, wz);
+      const da = desertAmount(wx, wz);
+      const desert = da >= 0;
+      let h = terrainHeight(wx, wz);
+      if (desert) {
+        const t = Math.min(1, da / 24);
+        const dune = Math.floor(11 + smoothNoise(wx * 0.035, wz * 0.035) * 7 + smoothNoise(wx * 0.12, wz * 0.12) * 2);
+        h = Math.floor(h + (dune - h) * t);
+      }
       for (let y = 0; y < CHUNK_HEIGHT; y++) {
         const idx = (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
         if (y === 0) data[idx] = 6;
-        else if (y < h - 3) data[idx] = 6;
-        else if (y < h) data[idx] = 2;
-        else if (y === h) data[idx] = 1;
+        else if (desert) {
+          if (y < h - 4) data[idx] = 6;
+          else if (y <= h) data[idx] = 13;
+        } else {
+          if (y < h - 3) data[idx] = 6;
+          else if (y < h) data[idx] = 2;
+          else if (y === h) data[idx] = 1;
+        }
+      }
+      if (desert) {
+        // Sparse cacti, 1 to 3 blocks tall
+        if (da >= 4 && hash2(wx * 5.7 + 3, wz * 2.9 + 7) > 0.988) {
+          const ch = 1 + Math.floor(hash2(wx * 1.3, wz * 9.1) * 3);
+          if (h + ch + 1 < CHUNK_HEIGHT) {
+            for (let cy = 1; cy <= ch; cy++) data[((h + cy) * CHUNK_SIZE + z) * CHUNK_SIZE + x] = 12;
+          }
+        }
+        continue;
       }
       // Occasional trees
       if (hash2(wx * 3.1, wz * 7.3) > 0.985 && x > 2 && x < 13 && z > 2 && z < 13 && h + 6 < CHUNK_HEIGHT) {
@@ -417,7 +728,10 @@ function getChunk(cx, cz, create = true) {
   const key = chunkKey(cx, cz);
   let ch = chunks.get(key);
   if (!ch && create) {
-    ch = { cx, cz, data: generateChunkData(cx, cz), vao: null, vbo: null, count: 0, dirty: true };
+    const data = generateChunkData(cx, cz);
+    const ed = edits.get(key);
+    if (ed) for (const [i, id] of ed) data[i] = id;
+    ch = { cx, cz, data, vao: null, vbo: null, count: 0, dirty: true };
     chunks.set(key, ch);
     buildQueue.push(ch);
   }
@@ -442,7 +756,23 @@ function setBlock(wx, wy, wz, id) {
   const ch = getChunk(cx, cz, true);
   const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
   const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-  ch.data[(wy * CHUNK_SIZE + lz) * CHUNK_SIZE + lx] = id;
+  const cidx = (wy * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
+  const oldId = ch.data[cidx];
+  ch.data[cidx] = id;
+  const tkey = wx + ',' + wy + ',' + wz;
+  if (oldId === 11) torches.delete(tkey);
+  if (id === 11) torches.set(tkey, [wx, wy, wz]);
+  if (id === 11 || oldId === 11) markLightArea(wx, wz);
+  else if (torches.size) {
+    for (const t of torches.values()) {
+      if (Math.abs(t[0] - wx) <= LR && Math.abs(t[2] - wz) <= LR) markLightArea(t[0], t[2]);
+    }
+  }
+  const ekey = chunkKey(cx, cz);
+  let ed = edits.get(ekey);
+  if (!ed) { ed = new Map(); edits.set(ekey, ed); }
+  ed.set(cidx, id);
+  worldDirty = true;
   markChunkDirty(cx, cz);
   if (lx === 0) markChunkDirty(cx - 1, cz);
   if (lx === CHUNK_SIZE - 1) markChunkDirty(cx + 1, cz);
@@ -466,7 +796,7 @@ const FACE_LIGHT = [1.0, 0.55, 0.85, 0.85, 0.75, 0.75];
 const UV_INSET = 0.02;
 
 // face: 0=Top(+Y) 1=Bottom(-Y) 2=Front(+Z) 3=Back(-Z) 4=Right(+X) 5=Left(-X)
-function pushFace(verts, face, x0, y0, z0, x1, y1, z1, tile) {
+function pushFace(verts, face, x0, y0, z0, x1, y1, z1, tile, bl) {
   let P, uvs;
   switch (face) {
     case 0: P = [[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0]]; uvs = UV_FLAT; break;
@@ -483,17 +813,62 @@ function pushFace(verts, face, x0, y0, z0, x1, y1, z1, tile) {
     const i = QUAD_ORDER[k];
     const u = (tx + UV_INSET + uvs[i][0] * span) / COLS;
     const v = (ty + UV_INSET + uvs[i][1] * span) / ROWS;
-    verts.push(P[i][0], P[i][1], P[i][2], u, v, light);
+    verts.push(P[i][0], P[i][1], P[i][2], u, v, light, bl || 0);
   }
 }
 
-function pushBox(verts, x0, y0, z0, x1, y1, z1, topT, sideT, botT) {
-  pushFace(verts, 0, x0, y0, z0, x1, y1, z1, topT);
-  pushFace(verts, 1, x0, y0, z0, x1, y1, z1, botT);
-  pushFace(verts, 2, x0, y0, z0, x1, y1, z1, sideT);
-  pushFace(verts, 3, x0, y0, z0, x1, y1, z1, sideT);
-  pushFace(verts, 4, x0, y0, z0, x1, y1, z1, sideT);
-  pushFace(verts, 5, x0, y0, z0, x1, y1, z1, sideT);
+function pushBox(verts, x0, y0, z0, x1, y1, z1, topT, sideT, botT, bl) {
+  pushFace(verts, 0, x0, y0, z0, x1, y1, z1, topT, bl);
+  pushFace(verts, 1, x0, y0, z0, x1, y1, z1, botT, bl);
+  pushFace(verts, 2, x0, y0, z0, x1, y1, z1, sideT, bl);
+  pushFace(verts, 3, x0, y0, z0, x1, y1, z1, sideT, bl);
+  pushFace(verts, 4, x0, y0, z0, x1, y1, z1, sideT, bl);
+  pushFace(verts, 5, x0, y0, z0, x1, y1, z1, sideT, bl);
+}
+
+// ---------- Torch light ----------
+// Light spreads from each torch through non-opaque cells, losing 1 level per step.
+const LR = 12;
+const DIRS6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+
+function computeLight(baseX, baseZ) {
+  const list = [];
+  for (const t of torches.values()) {
+    if (t[0] >= baseX - LR && t[0] < baseX + CHUNK_SIZE + LR && t[2] >= baseZ - LR && t[2] < baseZ + CHUNK_SIZE + LR) list.push(t);
+  }
+  if (!list.length) return null;
+  const W = CHUNK_SIZE + 2 * LR;
+  const light = new Uint8Array(W * CHUNK_HEIGHT * W);
+  const gi = (x, y, z) => (y * W + (z - baseZ + LR)) * W + (x - baseX + LR);
+  const queue = [];
+  for (const t of list) {
+    if (t[1] < 0 || t[1] >= CHUNK_HEIGHT) continue;
+    light[gi(t[0], t[1], t[2])] = LR;
+    queue.push(t[0], t[1], t[2]);
+  }
+  let head = 0;
+  while (head < queue.length) {
+    const x = queue[head++], y = queue[head++], z = queue[head++];
+    const l = light[gi(x, y, z)];
+    if (l <= 1) continue;
+    for (const d of DIRS6) {
+      const nx = x + d[0], ny = y + d[1], nz = z + d[2];
+      if (ny < 0 || ny >= CHUNK_HEIGHT) continue;
+      if (nx < baseX - LR || nx >= baseX + CHUNK_SIZE + LR || nz < baseZ - LR || nz >= baseZ + CHUNK_SIZE + LR) continue;
+      const b = getBlock(nx, ny, nz);
+      if (b !== 0 && !BLOCK_MAP[b].transparent) continue;
+      const ni = gi(nx, ny, nz);
+      if (light[ni] < l - 1) { light[ni] = l - 1; queue.push(nx, ny, nz); }
+    }
+  }
+  return { light, W };
+}
+
+// Chunks whose lighting can change because of an edit at (wx, wz)
+function markLightArea(wx, wz) {
+  const x0 = Math.floor((wx - LR) / CHUNK_SIZE), x1 = Math.floor((wx + LR) / CHUNK_SIZE);
+  const z0 = Math.floor((wz - LR) / CHUNK_SIZE), z1 = Math.floor((wz + LR) / CHUNK_SIZE);
+  for (let cx = x0; cx <= x1; cx++) for (let cz = z0; cz <= z1; cz++) markChunkDirty(cx, cz);
 }
 
 function buildChunkMesh(ch) {
@@ -501,6 +876,13 @@ function buildChunkMesh(ch) {
   const baseX = ch.cx * CHUNK_SIZE;
   const baseZ = ch.cz * CHUNK_SIZE;
   const isOpaque = (b) => b !== 0 && !BLOCK_MAP[b].transparent;
+  const L = computeLight(baseX, baseZ);
+  const lightAt = (wx, wy, wz) => {
+    if (!L || wy < 0 || wy >= CHUNK_HEIGHT) return 0;
+    const gx = wx - baseX + LR, gz = wz - baseZ + LR;
+    if (gx < 0 || gz < 0 || gx >= L.W || gz >= L.W) return 0;
+    return L.light[(wy * L.W + gz) * L.W + gx] / LR;
+  };
 
   for (let y = 0; y < CHUNK_HEIGHT; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -509,14 +891,15 @@ function buildChunkMesh(ch) {
         if (id === 0) continue;
         const wx = baseX + x, wz = baseZ + z;
         const info = BLOCK_MAP[id];
+        const lb = lightAt(wx, y, wz);
 
         if (id === 7) {
           // Ladder rungs
           const W = TILE.LADDER_WOOD;
-          pushBox(verts, x+0.12, y, z+0.02, x+0.24, y+1, z+0.14, W, W, W);
-          pushBox(verts, x+0.76, y, z+0.02, x+0.88, y+1, z+0.14, W, W, W);
+          pushBox(verts, x+0.12, y, z+0.02, x+0.24, y+1, z+0.14, W, W, W, lb);
+          pushBox(verts, x+0.76, y, z+0.02, x+0.88, y+1, z+0.14, W, W, W, lb);
           for (let r = 0.15; r < 0.95; r += 0.25) {
-            pushBox(verts, x+0.12, y+r, z+0.02, x+0.88, y+r+0.08, z+0.14, W, W, W);
+            pushBox(verts, x+0.12, y+r, z+0.02, x+0.88, y+r+0.08, z+0.14, W, W, W, lb);
           }
           continue;
         }
@@ -528,17 +911,29 @@ function buildChunkMesh(ch) {
           const TI = TILE.TIE, RA = TILE.RAIL;
           if (nX && !nZ) {
             for (let t = 0.1; t < 0.95; t += 0.28) {
-              pushBox(verts, x+t, y, z+0.12, x+t+0.14, y+0.05, z+0.88, TI, TI, TI);
+              pushBox(verts, x+t, y, z+0.12, x+t+0.14, y+0.05, z+0.88, TI, TI, TI, lb);
             }
-            pushBox(verts, x, y+0.05, z+0.20, x+1, y+0.12, z+0.30, RA, RA, RA);
-            pushBox(verts, x, y+0.05, z+0.70, x+1, y+0.12, z+0.80, RA, RA, RA);
+            pushBox(verts, x, y+0.05, z+0.20, x+1, y+0.12, z+0.30, RA, RA, RA, lb);
+            pushBox(verts, x, y+0.05, z+0.70, x+1, y+0.12, z+0.80, RA, RA, RA, lb);
           } else {
             for (let t = 0.1; t < 0.95; t += 0.28) {
-              pushBox(verts, x+0.12, y, z+t, x+0.88, y+0.05, z+t+0.14, TI, TI, TI);
+              pushBox(verts, x+0.12, y, z+t, x+0.88, y+0.05, z+t+0.14, TI, TI, TI, lb);
             }
-            pushBox(verts, x+0.20, y+0.05, z, x+0.30, y+0.12, z+1, RA, RA, RA);
-            pushBox(verts, x+0.70, y+0.05, z, x+0.80, y+0.12, z+1, RA, RA, RA);
+            pushBox(verts, x+0.20, y+0.05, z, x+0.30, y+0.12, z+1, RA, RA, RA, lb);
+            pushBox(verts, x+0.70, y+0.05, z, x+0.80, y+0.12, z+1, RA, RA, RA, lb);
           }
+          continue;
+        }
+
+        if (id === 11) {
+          // Torch: always fully lit
+          pushBox(verts, x+0.44, y, z+0.44, x+0.56, y+0.62, z+0.56, TILE.TORCH_TOP, TILE.TORCH_SIDE, TILE.TORCH_SIDE, 1);
+          continue;
+        }
+
+        if (id === 12) {
+          // Cactus: slightly inset like the real thing
+          pushBox(verts, x+0.0625, y, z+0.0625, x+0.9375, y+1, z+0.9375, TILE.CACTUS_TOP, TILE.CACTUS_SIDE, TILE.CACTUS_TOP, lb);
           continue;
         }
 
@@ -551,12 +946,12 @@ function buildChunkMesh(ch) {
 
         const showFace = (nb) => id === 3 ? (nb !== 3 && !isOpaque(nb)) : !isOpaque(nb);
 
-        if (showFace(bTop))          pushFace(verts, 0, x, y, z, x+1, y+1, z+1, info.top);
-        if (y > 0 && showFace(bBot)) pushFace(verts, 1, x, y, z, x+1, y+1, z+1, info.bot);
-        if (showFace(bPz))           pushFace(verts, 2, x, y, z, x+1, y+1, z+1, info.side);
-        if (showFace(bNz))           pushFace(verts, 3, x, y, z, x+1, y+1, z+1, info.side);
-        if (showFace(bPx))           pushFace(verts, 4, x, y, z, x+1, y+1, z+1, info.side);
-        if (showFace(bNx))           pushFace(verts, 5, x, y, z, x+1, y+1, z+1, info.side);
+        if (showFace(bTop))          pushFace(verts, 0, x, y, z, x+1, y+1, z+1, info.top,  lightAt(wx, y + 1, wz));
+        if (y > 0 && showFace(bBot)) pushFace(verts, 1, x, y, z, x+1, y+1, z+1, info.bot,  lightAt(wx, y - 1, wz));
+        if (showFace(bPz))           pushFace(verts, 2, x, y, z, x+1, y+1, z+1, info.side, lightAt(wx, y, wz + 1));
+        if (showFace(bNz))           pushFace(verts, 3, x, y, z, x+1, y+1, z+1, info.side, lightAt(wx, y, wz - 1));
+        if (showFace(bPx))           pushFace(verts, 4, x, y, z, x+1, y+1, z+1, info.side, lightAt(wx + 1, y, wz));
+        if (showFace(bNx))           pushFace(verts, 5, x, y, z, x+1, y+1, z+1, info.side, lightAt(wx - 1, y, wz));
       }
     }
   }
@@ -569,7 +964,7 @@ function buildChunkMesh(ch) {
   gl.bindBuffer(gl.ARRAY_BUFFER, ch.vbo);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
   setupAttribs();
-  ch.count = verts.length / 6;
+  ch.count = verts.length / 7;
   ch.dirty = false;
 }
 
@@ -598,7 +993,7 @@ gl.bindVertexArray(cartVao);
 gl.bindBuffer(gl.ARRAY_BUFFER, cartVbo);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cartVerts), gl.STATIC_DRAW);
 setupAttribs();
-const cartVertCount = cartVerts.length / 6;
+const cartVertCount = cartVerts.length / 7;
 
 // Highlight wireframe VAO
 const hlVerts = [];
@@ -611,7 +1006,7 @@ const edges = [
   [e0,e0,e0, e0,e1,e0], [e1,e0,e0, e1,e1,e0], [e1,e0,e1, e1,e1,e1], [e0,e0,e1, e0,e1,e1]
 ];
 edges.forEach(e => {
-  hlVerts.push(e[0],e[1],e[2], hlU,hlV, 1, e[3],e[4],e[5], hlU,hlV, 1);
+  hlVerts.push(e[0],e[1],e[2], hlU,hlV, 1, 0, e[3],e[4],e[5], hlU,hlV, 1, 0);
 });
 const hlVao = gl.createVertexArray();
 const hlVbo = gl.createBuffer();
@@ -635,74 +1030,436 @@ for (let cx = -2; cx <= 2; cx++) {
 }
 player.y = terrainHeight(8, 8) + 3;
 
+// ---------- Shared game state ----------
+const mobs = [];
+const drops = [];
+let worldTime = 0.08;   // fraction of a day, 0.25 = noon, 0.75 = midnight
+let dayCount = 1;
+let deadTimer = 0;
+
+function clearChunks() {
+  for (const ch of chunks.values()) {
+    if (ch.vao) gl.deleteVertexArray(ch.vao);
+    if (ch.vbo) gl.deleteBuffer(ch.vbo);
+  }
+  chunks.clear();
+  buildQueue.length = 0;
+}
+
+function newWorld() {
+  if (ridingCart) dismountCart();
+  clearChunks();
+  minecarts.length = 0;
+  mobs.length = 0;
+  drops.length = 0;
+  worldSeed = Math.floor(Math.random() * 100000);
+  document.getElementById('seed').textContent = worldSeed;
+  for (let cx = -2; cx <= 2; cx++) {
+    for (let cz = -2; cz <= 2; cz++) getChunk(cx, cz, true);
+  }
+  player.x = 8.5; player.z = 8.5;
+  player.y = terrainHeight(8, 8) + 3;
+  player.vx = player.vy = player.vz = 0;
+  pendingReset = false; maxHp = 20; deaths = 0; hp = 20;
+  worldTime = 0.08; dayCount = 1; deadTimer = 0;
+  if (isSurvival()) {
+    for (let i = 0; i < 36; i++) inv[i] = emptySlot();
+    armor.head = 0; armor.chest = 0;
+    selectedSlot = 0;
+  }
+  edits.clear();
+  torches.clear();
+  document.getElementById('death').style.display = 'none';
+  renderHotbar();
+  saveWorld();
+}
+
+function setMode(m) {
+  if (m === settings.mode) { syncSettingsUI(); return; }
+  if (ridingCart) dismountCart();
+  saveWorld();                         // keep the world we are leaving
+  settings.mode = m;
+  player.noclip = false;
+  deadTimer = 0; pendingReset = false;
+  document.getElementById('death').style.display = 'none';
+  if (!loadWorld()) newWorld();        // each mode has its own world; a first visit starts fresh
+  document.getElementById('mode').textContent = 'Walking';
+  selectedSlot = Math.min(selectedSlot, 8);
+  applySettings();
+  syncSettingsUI();
+}
+
+// ---------- Settings screen ----------
+const $ = (id) => document.getElementById(id);
+function syncSettingsUI() {
+  $('sMode').value = settings.mode;
+  $('sDiff').value = settings.difficulty;
+  $('sMobs').checked = settings.mobs;
+  $('sDay').value = settings.dayLen;   $('vDay').textContent = settings.dayLen + ' min';
+  $('sRender').value = settings.renderDist; $('vRender').textContent = settings.renderDist;
+  $('sFov').value = settings.fov;      $('vFov').textContent = settings.fov + '°';
+  $('sSens').value = settings.sens;    $('vSens').textContent = settings.sens + '%';
+  $('sFog').checked = settings.fog;
+  $('sHud').checked = settings.hud;
+  $('rowMobs').classList.toggle('off', settings.difficulty === 'peaceful');
+}
+function applySettings() {
+  RENDER_DIST = settings.renderDist;
+  $('hud').style.display = settings.hud ? 'block' : 'none';
+  if (settings.difficulty === 'peaceful' || !settings.mobs) mobs.length = 0;
+  renderHotbar();
+  saveSettings();
+}
+$('sMode').onchange = (e) => setMode(e.target.value);
+$('sDiff').onchange = (e) => { settings.difficulty = e.target.value; applySettings(); syncSettingsUI(); };
+$('sMobs').onchange = (e) => { settings.mobs = e.target.checked; applySettings(); };
+$('sDay').oninput = (e) => { settings.dayLen = +e.target.value; applySettings(); syncSettingsUI(); };
+$('sRender').oninput = (e) => { settings.renderDist = +e.target.value; applySettings(); syncSettingsUI(); };
+$('sFov').oninput = (e) => { settings.fov = +e.target.value; applySettings(); syncSettingsUI(); };
+$('sSens').oninput = (e) => { settings.sens = +e.target.value; applySettings(); syncSettingsUI(); };
+$('sFog').onchange = (e) => { settings.fog = e.target.checked; applySettings(); };
+$('sHud').onchange = (e) => { settings.hud = e.target.checked; applySettings(); };
+syncSettingsUI();
+
+// ---------- Screen management ----------
+let screen = null;      // null | 'settings' | 'inv'
+let locked = false;
+const overlay = $('overlay');
+const invScreen = $('invScreen');
+const invGrid = $('invGrid');
+const invExtra = $('invExtra');
+const armorSlotsEl = $('armorSlots');
+const cursorImg = $('cursorItem');
+let cursor = { id: 0, count: 0 };
+
+function refreshUI() {
+  overlay.style.display = (!locked && screen === null) ? 'flex' : 'none';
+  $('settings').style.display = screen === 'settings' ? 'flex' : 'none';
+  invScreen.style.display = screen === 'inv' ? 'flex' : 'none';
+  if (screen !== 'inv') cursorImg.style.display = 'none';
+}
+function openScreen(name) {
+  screen = name;
+  if (name === 'inv') renderInv();
+  if (name === 'settings') syncSettingsUI();
+  if (locked) document.exitPointerLock(); else refreshUI();
+}
+function closeScreen() {
+  if (screen === 'inv' && cursor.id) {
+    const left = addItem(cursor.id, cursor.count);
+    if (left > 0) spawnDrop(player.x, player.y + 1.2, player.z, cursor.id, left);
+    cursor = { id: 0, count: 0 };
+  }
+  const wasInv = screen === 'inv';
+  screen = null;
+  refreshUI();
+  renderHotbar();
+  if (wasInv) canvas.requestPointerLock();
+}
+$('playBtn').onclick = (e) => { e.stopPropagation(); canvas.requestPointerLock(); };
+$('settingsBtn').onclick = (e) => { e.stopPropagation(); openScreen('settings'); };
+$('settingsBack').onclick = () => closeScreen();
+$('settingsNew').onclick = () => { newWorld(); closeScreen(); };
+$('invClose').onclick = () => closeScreen();
+
+// ---------- Crafting ----------
+// cost keys are item ids: 4 Wood, 5 Planks, 20 Stick, 6 Stone, 2 Dirt, 10 Leaves
+const RECIPES = [
+  { out: 5,  n: 4, cost: { 4: 1 } },
+  { out: 20, n: 4, cost: { 5: 2 } },
+  { out: 21, n: 1, cost: { 5: 2, 20: 1 } },
+  { out: 24, n: 1, cost: { 5: 3, 20: 2 } },
+  { out: 22, n: 1, cost: { 5: 5 } },
+  { out: 23, n: 1, cost: { 5: 8 } },
+  { out: 7,  n: 2, cost: { 20: 5 } },
+  { out: 8,  n: 6, cost: { 6: 2, 20: 3 } },
+  { out: 9,  n: 1, cost: { 6: 5 } },
+  { out: 3,  n: 2, cost: { 13: 2 } },
+  { out: 11, n: 4, cost: { 20: 1, 5: 1 } },
+  { out: 25, n: 1, cost: { 5: 3, 20: 2 } },
+  { out: 1,  n: 1, cost: { 2: 1, 10: 1 } }
+];
+function canAfford(cost) { return Object.entries(cost).every(([id, n]) => countItem(+id) >= n); }
+function craft(r) {
+  if (!canAfford(r.cost)) return;
+  for (const [id, n] of Object.entries(r.cost)) removeItem(+id, n);
+  const left = addItem(r.out, r.n);
+  if (left > 0) spawnDrop(player.x, player.y + 1.2, player.z, r.out, left);
+}
+
+// ---------- Inventory screen ----------
+function slotClick(arr, i) {
+  const s = arr[i];
+  if (cursor.id && s.id === cursor.id && stackMax(s.id) > 1) {
+    const a = Math.min(stackMax(s.id) - s.count, cursor.count);
+    s.count += a; cursor.count -= a;
+    if (!cursor.count) cursor.id = 0;
+  } else {
+    const t = { id: s.id, count: s.count };
+    s.id = cursor.id; s.count = cursor.count;
+    cursor = t;
+  }
+}
+function armorClick(k) {
+  if (cursor.id) {
+    if (itemInfo(cursor.id).armor !== k) return;
+    const old = armor[k];
+    armor[k] = cursor.id;
+    cursor = old ? { id: old, count: 1 } : { id: 0, count: 0 };
+  } else if (armor[k]) {
+    cursor = { id: armor[k], count: 1 };
+    armor[k] = 0;
+  }
+}
+function slotEl(s, selected) {
+  const d = document.createElement('div');
+  d.className = 'islot' + (selected ? ' sel' : '');
+  if (s && s.id) {
+    d.innerHTML = `<img src="${tileIconURL(itemInfo(s.id).icon)}" alt="">` +
+      (s.count > 1 && isSurvival() ? `<span class="cnt">${s.count}</span>` : '');
+    d.title = itemInfo(s.id).name;
+  }
+  return d;
+}
+function updateCursorImg() {
+  if (cursor.id && screen === 'inv') {
+    cursorImg.src = tileIconURL(itemInfo(cursor.id).icon);
+    cursorImg.style.display = 'block';
+  } else cursorImg.style.display = 'none';
+}
+function renderInv() {
+  $('invTitle').textContent = isSurvival() ? 'Inventory & Crafting' : 'Creative Inventory';
+  armorSlotsEl.innerHTML = '';
+  invGrid.innerHTML = '';
+  invExtra.innerHTML = '';
+  const redraw = () => { renderInv(); renderHotbar(); };
+
+  if (isSurvival()) {
+    armorSlotsEl.style.display = 'flex';
+    armorSlotsEl.append('Armor:');
+    for (const k of ['head', 'chest']) {
+      const d = slotEl(armor[k] ? { id: armor[k], count: 1 } : null, false);
+      if (!armor[k]) d.title = k === 'head' ? 'Helmet slot' : 'Chestplate slot';
+      d.addEventListener('click', () => { armorClick(k); redraw(); });
+      armorSlotsEl.appendChild(d);
+    }
+    const order = [];
+    for (let i = 9; i < 36; i++) order.push(i);
+    for (let i = 0; i < 9; i++) order.push(i);
+    order.forEach((i) => {
+      const d = slotEl(inv[i], i === selectedSlot);
+      d.addEventListener('click', () => { slotClick(inv, i); redraw(); });
+      invGrid.appendChild(d);
+    });
+    const h = document.createElement('h2');
+    h.style.cssText = 'font-size:16px;margin-top:10px';
+    h.textContent = 'Hand Crafting';
+    invExtra.appendChild(h);
+    RECIPES.forEach((r) => {
+      const ok = canAfford(r.cost);
+      const row = document.createElement('div');
+      row.className = 'recipe' + (ok ? '' : ' no');
+      const need = Object.entries(r.cost).map(([id, n]) => `${n}× ${itemInfo(+id).name}`).join(' + ');
+      row.innerHTML = `<img src="${tileIconURL(itemInfo(r.out).icon)}" alt=""><b>${r.n}× ${itemInfo(r.out).name}</b><span class="need">${need}</span>`;
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.textContent = 'Craft';
+      b.disabled = !ok;
+      b.addEventListener('click', () => { craft(r); redraw(); });
+      row.appendChild(b);
+      invExtra.appendChild(row);
+    });
+  } else {
+    armorSlotsEl.style.display = 'none';
+    creativeBar.forEach((s, i) => {
+      const d = slotEl(s, i === selectedSlot);
+      d.addEventListener('click', () => { selectedSlot = i; redraw(); });
+      invGrid.appendChild(d);
+    });
+    const h = document.createElement('div');
+    h.style.cssText = 'font-size:13px;color:#bbb;margin-top:8px';
+    h.textContent = 'Click an item to put it in the selected hotbar slot:';
+    invExtra.appendChild(h);
+    const pal = document.createElement('div');
+    pal.className = 'invgrid';
+    ALL_ITEM_IDS.forEach((id) => {
+      const d = slotEl({ id, count: 1 }, false);
+      d.addEventListener('click', () => { creativeBar[selectedSlot] = { id, count: 1 }; redraw(); });
+      pal.appendChild(d);
+    });
+    invExtra.appendChild(pal);
+  }
+  updateCursorImg();
+}
+document.addEventListener('mousemove', (e) => {
+  if (screen === 'inv' && cursor.id) {
+    cursorImg.style.left = (e.clientX - 15) + 'px';
+    cursorImg.style.top = (e.clientY - 15) + 'px';
+  }
+});
+// Keep the held cursor item in sync after clicks
+invScreen.addEventListener('click', updateCursorImg);
+
+applySettings();
+
+// ---------- Saving & loading ----------
+const worldKey = () => 'minecraftz_world_v10_' + settings.mode;   // one world per mode
+let saveFailed = false;
+
+function saveWorld() {
+  if (pendingReset) return;
+  try {
+    const e = {};
+    for (const [k, m] of edits) {
+      const a = [];
+      for (const [i, id] of m) a.push(i, id);
+      e[k] = a;
+    }
+    const data = {
+      v: 1, seed: worldSeed, edits: e,
+      player: deadTimer > 0 ? { x: 8.5, y: terrainHeight(8, 8) + 3, z: 8.5, yaw: player.yaw, pitch: player.pitch }
+                            : { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch },
+      hp: deadTimer > 0 ? maxHp : hp, maxHp, deaths, worldTime, dayCount,
+      inv: inv.map(s => [s.id, s.count]),
+      armor: { head: armor.head, chest: armor.chest },
+      creativeBar: creativeBar.map(s => s.id),
+      carts: minecarts.map(c => [c.x, c.y, c.z]),
+      selectedSlot
+    };
+    localStorage.setItem(worldKey(), JSON.stringify(data));
+    worldDirty = false;
+    saveFailed = false;
+  } catch (err) {
+    saveFailed = true;
+  }
+}
+
+function pregenAround(px, pz) {
+  const pcx = Math.floor(px / CHUNK_SIZE), pcz = Math.floor(pz / CHUNK_SIZE);
+  for (let cx = pcx - 2; cx <= pcx + 2; cx++) {
+    for (let cz = pcz - 2; cz <= pcz + 2; cz++) getChunk(cx, cz, true);
+  }
+}
+
+function loadWorld() {
+  try {
+    let raw = localStorage.getItem(worldKey());
+    if (!raw && settings.mode === 'creative') raw = localStorage.getItem('minecraftz_world_v8');   // worlds saved by v8/v9
+    const d = JSON.parse(raw || 'null');
+    if (!d || d.v !== 1 || !d.player) return false;
+    worldSeed = d.seed;
+    document.getElementById('seed').textContent = worldSeed;
+    edits.clear();
+    for (const k in d.edits) {
+      const a = d.edits[k], m = new Map();
+      for (let i = 0; i + 1 < a.length; i += 2) m.set(a[i], a[i + 1]);
+      edits.set(k, m);
+    }
+    torches.clear();
+    for (const [k, m] of edits) {
+      const parts = k.split(',').map(Number);
+      for (const [i, id] of m) {
+        if (id !== 11) continue;
+        const x = parts[0] * CHUNK_SIZE + (i % CHUNK_SIZE), z = parts[1] * CHUNK_SIZE + (Math.floor(i / CHUNK_SIZE) % CHUNK_SIZE), y = Math.floor(i / (CHUNK_SIZE * CHUNK_SIZE));
+        torches.set(x + ',' + y + ',' + z, [x, y, z]);
+      }
+    }
+    Object.assign(player, { x: d.player.x, y: d.player.y, z: d.player.z, yaw: d.player.yaw || 0, pitch: d.player.pitch || 0 });
+    player.vx = player.vy = player.vz = 0;
+    maxHp = Math.max(2, Math.min(20, d.maxHp || 20));
+    deaths = d.deaths || 0;
+    hp = Math.max(1, Math.min(maxHp, d.hp || maxHp));
+    worldTime = d.worldTime || 0.08;
+    dayCount = d.dayCount || 1;
+    for (let i = 0; i < 36; i++) inv[i] = emptySlot();
+    mobs.length = 0; drops.length = 0;
+    (d.inv || []).forEach((p, i) => { if (i < 36 && p[0] && ITEMS_OK(p[0])) inv[i] = { id: p[0], count: p[1] }; });
+    for (const k of ['head', 'chest']) armor[k] = ITEMS_OK(d.armor && d.armor[k]) ? d.armor[k] : 0;
+    (d.creativeBar || []).forEach((id, i) => { if (i < 9 && ITEMS_OK(id)) creativeBar[i] = { id, count: 1 }; });
+    minecarts.length = 0;
+    (d.carts || []).forEach(c => minecarts.push({ x: c[0], y: c[1], z: c[2], vx: 0, vy: 0, vz: 0 }));
+    selectedSlot = Math.min(8, d.selectedSlot || 0);
+    // Drop the chunks generated for the default spawn and rebuild around the saved position
+    clearChunks();
+    pregenAround(player.x, player.z);
+    renderHotbar();
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+function ITEMS_OK(id) { return !!id && !!itemInfo(id); }
+
+loadWorld();
+setInterval(saveWorld, 8000);
+window.addEventListener('pagehide', saveWorld);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveWorld(); });
+document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== canvas) saveWorld(); });
+
 // Input handling
 const keys = {};
-let locked = false;
-const overlay = document.getElementById('overlay');
-overlay.addEventListener('click', () => canvas.requestPointerLock());
+overlay.addEventListener('click', (e) => { if (e.target === overlay) canvas.requestPointerLock(); });
 document.addEventListener('pointerlockchange', () => {
   locked = (document.pointerLockElement === canvas);
-  overlay.style.display = locked ? 'none' : 'flex';
+  refreshUI();
 });
+
+let mouseHeld = false;
 
 document.addEventListener('mousemove', (e) => {
   if (!locked) return;
-  player.yaw -= e.movementX * 0.0024;
-  player.pitch = Math.max(-1.52, Math.min(1.52, player.pitch - e.movementY * 0.0024));
+  const k = 0.0024 * settings.sens / 100;
+  player.yaw -= e.movementX * k;
+  player.pitch = Math.max(-1.52, Math.min(1.52, player.pitch - e.movementY * k));
 });
 
 window.addEventListener('wheel', (e) => {
   if (!locked) return;
-  selectedSlot = (selectedSlot + (e.deltaY > 0 ? 1 : -1) + ITEMS.length) % ITEMS.length;
+  const n = getBar().length;
+  selectedSlot = (selectedSlot + (e.deltaY > 0 ? 1 : -1) + n) % n;
   renderHotbar();
 });
 
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings')) { closeScreen(); return; }
+  if (screen === 'inv' && (e.code === 'KeyC' || e.code === 'KeyI')) { closeScreen(); return; }
   keys[e.code] = true;
+  if (!locked || screen !== null || deadTimer > 0) return;
+
   if (e.code.startsWith('Digit')) {
     const n = parseInt(e.code.replace('Digit', ''), 10) - 1;
-    if (n >= 0 && n < ITEMS.length) {
+    if (n >= 0 && n < getBar().length) {
       selectedSlot = n;
       renderHotbar();
     }
   }
-  if (e.code === 'KeyN') {
+  if (e.code === 'KeyC' || e.code === 'KeyI') openScreen('inv');
+  if (e.code === 'KeyN' && !isSurvival()) {
     if (ridingCart) dismountCart();
     player.noclip = !player.noclip;
     player.vy = 0;
     document.getElementById('mode').textContent = player.noclip ? 'Noclip (3D Aim)' : 'Walking';
   }
-  if (e.code === 'KeyE') {
-    handleUseOrPlace();
-  }
-  if (e.code === 'KeyQ') {
-    handleBreak();
-  }
+  if (e.code === 'KeyE') handleUseOrPlace();
+  if (e.code === 'KeyQ' && !isSurvival()) handleBreak();
   if (e.code === 'KeyF') {
     if (ridingCart) dismountCart();
   }
-  if (e.code === 'KeyR') {
-    if (ridingCart) dismountCart();
-    chunks.clear();
-    buildQueue.length = 0;
-    minecarts.length = 0;
-    worldSeed = Math.floor(Math.random() * 100000);
-    document.getElementById('seed').textContent = worldSeed;
-    for (let cx = -2; cx <= 2; cx++) {
-      for (let cz = -2; cz <= 2; cz++) getChunk(cx, cz, true);
-    }
-    player.x = 8.5; player.z = 8.5;
-    player.y = terrainHeight(8, 8) + 3;
-    player.vx = player.vy = player.vz = 0;
-  }
+  if (e.code === 'KeyR' && !isSurvival()) newWorld();
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+document.addEventListener('pointerlockchange', () => {
+  if (!locked) { for (const k in keys) keys[k] = false; mouseHeld = false; }
+});
 
 canvas.addEventListener('mousedown', (e) => {
-  if (!locked) return;
-  if (e.button === 0) handleBreak();
+  if (!locked || screen !== null) return;
+  if (e.button === 0) {
+    if (isSurvival()) mouseHeld = true; else handleBreak();
+  }
   if (e.button === 2) handleUseOrPlace();
 });
+window.addEventListener('mouseup', (e) => { if (e.button === 0) mouseHeld = false; });
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // Raycast helper for blocks and minecarts
@@ -715,45 +1472,41 @@ function getLookDir() {
   };
 }
 
+// Ray vs AABB (slab test). Returns entry distance or -1.
+function rayAABB(ox, oy, oz, d, minX, minY, minZ, maxX, maxY, maxZ, maxDist) {
+  let tmin = 0, tmax = maxDist;
+  const axes = [[ox, d.x, minX, maxX], [oy, d.y, minY, maxY], [oz, d.z, minZ, maxZ]];
+  for (const [o, dd, bmin, bmax] of axes) {
+    if (Math.abs(dd) < 1e-6) {
+      if (o < bmin || o > bmax) return -1;
+    } else {
+      let t1 = (bmin - o) / dd, t2 = (bmax - o) / dd;
+      if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+      if (tmin > tmax) return -1;
+    }
+  }
+  return tmin;
+}
+
 function raycastTarget() {
   const eyeX = player.x;
   const eyeY = ridingCart ? (ridingCart.y + 1.15) : (player.y + 1.62);
   const eyeZ = player.z;
   const dir = getLookDir();
 
-  let hitCart = null;
-  let bestCartDist = 5.5;
+  let hitCart = null, hitMob = null;
+  let bestEntDist = 5.5;
 
   for (const cart of minecarts) {
     if (cart === ridingCart) continue;
-    // Ray vs AABB around minecart
-    const minX = cart.x - 0.55, maxX = cart.x + 0.55;
-    const minY = cart.y,        maxY = cart.y + 0.85;
-    const minZ = cart.z - 0.55, maxZ = cart.z + 0.55;
-
-    let tmin = 0, tmax = bestCartDist;
-    const axes = [
-      [eyeX, dir.x, minX, maxX],
-      [eyeY, dir.y, minY, maxY],
-      [eyeZ, dir.z, minZ, maxZ]
-    ];
-    let hit = true;
-    for (const [o, d, bmin, bmax] of axes) {
-      if (Math.abs(d) < 1e-6) {
-        if (o < bmin || o > bmax) { hit = false; break; }
-      } else {
-        let t1 = (bmin - o) / d;
-        let t2 = (bmax - o) / d;
-        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-        tmin = Math.max(tmin, t1);
-        tmax = Math.min(tmax, t2);
-        if (tmin > tmax) { hit = false; break; }
-      }
-    }
-    if (hit && tmin < bestCartDist) {
-      bestCartDist = tmin;
-      hitCart = cart;
-    }
+    const t = rayAABB(eyeX, eyeY, eyeZ, dir, cart.x - 0.55, cart.y, cart.z - 0.55, cart.x + 0.55, cart.y + 0.85, cart.z + 0.55, bestEntDist);
+    if (t >= 0 && t < bestEntDist) { bestEntDist = t; hitCart = cart; hitMob = null; }
+  }
+  for (const m of mobs) {
+    const t = rayAABB(eyeX, eyeY, eyeZ, dir, m.x - 0.4, m.y, m.z - 0.4, m.x + 0.4, m.y + 1.85, m.z + 0.4, bestEntDist);
+    if (t >= 0 && t < bestEntDist) { bestEntDist = t; hitMob = m; hitCart = null; }
   }
 
   let hitBlock = null;
@@ -772,12 +1525,9 @@ function raycastTarget() {
     prevX = bx; prevY = by; prevZ = bz;
   }
 
-  if (hitCart && (!hitBlock || bestCartDist <= hitBlock.dist + 0.15)) {
-    return { type: 'cart', cart: hitCart };
-  }
-  if (hitBlock) {
-    return { type: 'block', ...hitBlock };
-  }
+  if (hitMob && (!hitBlock || bestEntDist <= hitBlock.dist + 0.15)) return { type: 'mob', mob: hitMob };
+  if (hitCart && (!hitBlock || bestEntDist <= hitBlock.dist + 0.15)) return { type: 'cart', cart: hitCart };
+  if (hitBlock) return { type: 'block', ...hitBlock };
   return null;
 }
 
@@ -798,7 +1548,15 @@ function dismountCart() {
   document.getElementById('mode').textContent = 'Walking';
 }
 
+function consumeHeld() {
+  if (!isSurvival()) return;
+  const s = heldSlot();
+  if (--s.count <= 0) { s.id = 0; s.count = 0; }
+  renderHotbar();
+}
+
 function handleUseOrPlace() {
+  if (deadTimer > 0) return;
   if (ridingCart) {
     dismountCart();
     return;
@@ -825,10 +1583,25 @@ function handleUseOrPlace() {
     }
   }
 
-  if (!target || target.type !== 'block') return;
-  const item = ITEMS[selectedSlot];
+  const slot = heldSlot();
+  if (!slot.id) return;
+  const item = itemInfo(slot.id);
 
-  // 3. Placing a Minecart item
+  // 3. Armor: equip it (swap with what is worn)
+  if (item.armor) {
+    if (!isSurvival()) return;
+    const old = armor[item.armor];
+    armor[item.armor] = item.id;
+    slot.id = old; slot.count = old ? 1 : 0;
+    renderHotbar();
+    return;
+  }
+
+  // Tools and materials are not placeable
+  if (!BLOCK_MAP[item.id]) return;
+  if (!target || target.type !== 'block') return;
+
+  // 4. Placing a Minecart item
   if (item.id === 9) {
     let spawnX = target.px + 0.5;
     let spawnY = target.py;
@@ -840,11 +1613,13 @@ function handleUseOrPlace() {
       spawnZ = target.bz + 0.5;
     }
     minecarts.push({ x: spawnX, y: spawnY, z: spawnZ, vx: 0, vy: 0, vz: 0 });
+    consumeHeld();
     return;
   }
 
-  // 4. Placing a standard block
+  // 5. Placing a standard block
   const { px, py, pz } = target;
+  if (py < 1 || py >= CHUNK_HEIGHT) return;
   // Prevent placing solid blocks inside player body
   if (item.solid) {
     const overlapX = (px + 1 > player.x - 0.3) && (px < player.x + 0.3);
@@ -853,17 +1628,124 @@ function handleUseOrPlace() {
     if (overlapX && overlapY && overlapZ) return;
   }
   setBlock(px, py, pz, item.id);
+  consumeHeld();
 }
 
+// What each block turns into when broken (0 = nothing)
+const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13 };
+// Seconds to break by hand
+const HARDNESS = { 1: 0.6, 2: 0.5, 3: 0.4, 4: 2.0, 5: 1.5, 6: 4.0, 7: 0.4, 8: 0.3, 10: 0.25, 11: 0.1, 12: 0.5, 13: 0.5 };
+function mineSpeed(id) {
+  if (heldId() === 24) return id === 6 ? 5 : 2;   // wooden pickaxe
+  if (heldId() === 25) return (id === 4 || id === 5) ? 4 : (id === 10 || id === 12) ? 2.5 : 1;   // wooden axe
+  return 1;
+}
+
+function breakBlock(bx, by, bz) {
+  const id = getBlock(bx, by, bz);
+  if (!id || by < 1) return;
+  setBlock(bx, by, bz, 0);
+  if (isSurvival() && DROP_OF[id]) spawnDrop(bx + 0.5, by + 0.35, bz + 0.5, DROP_OF[id], 1);
+}
+
+function removeCart(cart) {
+  const idx = minecarts.indexOf(cart);
+  if (idx !== -1) minecarts.splice(idx, 1);
+  if (isSurvival()) spawnDrop(cart.x, cart.y + 0.4, cart.z, 9, 1);
+}
+
+// Creative: instant. Used by click / Q in Creative.
 function handleBreak() {
+  if (deadTimer > 0) return;
   const target = raycastTarget();
   if (!target) return;
-  if (target.type === 'cart') {
-    const idx = minecarts.indexOf(target.cart);
-    if (idx !== -1) minecarts.splice(idx, 1);
+  if (target.type === 'cart') { removeCart(target.cart); return; }
+  if (target.type === 'mob') { attackMob(target.mob); return; }
+  breakBlock(target.bx, target.by, target.bz);
+}
+
+// Survival: hold to mine blocks, swing to attack
+let mineKey = null, mineProgress = 0, attackCd = 0;
+const mineBarEl = document.getElementById('mineBar');
+function resetMining() { mineKey = null; mineProgress = 0; mineBarEl.style.display = 'none'; }
+function updateMining(dt) {
+  attackCd -= dt;
+  const held = locked && screen === null && deadTimer <= 0 && isSurvival() && !ridingCart && (mouseHeld || keys['KeyQ']);
+  if (!held) { resetMining(); return; }
+  const t = raycastTarget();
+  if (!t) { resetMining(); return; }
+  if (t.type === 'mob') {
+    resetMining();
+    if (attackCd <= 0) { attackMob(t.mob); attackCd = 0.45; }
     return;
   }
-  setBlock(target.bx, target.by, target.bz, 0);
+  const key = t.type === 'cart' ? t.cart : `${t.bx},${t.by},${t.bz}`;
+  if (key !== mineKey) { mineKey = key; mineProgress = 0; }
+  const need = t.type === 'cart' ? 0.5 : (HARDNESS[t.id] || 1);
+  mineProgress += dt * (t.type === 'cart' ? 1 : mineSpeed(t.id));
+  mineBarEl.style.display = 'block';
+  mineBarEl.firstElementChild.style.width = Math.min(100, mineProgress / need * 100) + '%';
+  if (mineProgress >= need) {
+    if (t.type === 'cart') removeCart(t.cart); else breakBlock(t.bx, t.by, t.bz);
+    resetMining();
+  }
+}
+
+// ---------- Collectible drops ----------
+const dropMeshes = {};
+function getDropMesh(id) {
+  if (dropMeshes[id]) return dropMeshes[id];
+  const v = [];
+  const info = itemInfo(id);
+  if (BLOCK_MAP[id]) pushBox(v, -0.14, 0, -0.14, 0.14, 0.28, 0.14, info.top, info.side, info.bot);
+  else pushBox(v, -0.17, 0, -0.025, 0.17, 0.34, 0.025, info.icon, info.icon, info.icon);
+  const vao = gl.createVertexArray();
+  const vbo = gl.createBuffer();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  setupAttribs();
+  return (dropMeshes[id] = { vao, count: v.length / 7 });
+}
+
+function spawnDrop(x, y, z, id, count) {
+  if (drops.length > 160) drops.shift();
+  drops.push({ x, y, z, id, count, vx: (Math.random() - 0.5) * 2.5, vy: 3.5, vz: (Math.random() - 0.5) * 2.5, age: 0 });
+}
+
+function updateDrops(dt) {
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i];
+    d.age += dt;
+    if (d.age > 300 || d.y < -10) { drops.splice(i, 1); continue; }
+    if (!chunks.has(chunkKey(Math.floor(d.x / CHUNK_SIZE), Math.floor(d.z / CHUNK_SIZE)))) continue;
+
+    d.vy -= 20 * dt;
+    const ny = d.y + d.vy * dt;
+    if (d.vy < 0 && isSolidAt(d.x, ny, d.z)) {
+      d.y = Math.floor(ny) + 1;
+      d.vy = 0;
+      const f = Math.pow(0.02, dt);
+      d.vx *= f; d.vz *= f;
+    } else d.y = ny;
+    const nx = d.x + d.vx * dt, nz = d.z + d.vz * dt;
+    if (!isSolidAt(nx, d.y + 0.1, d.z)) d.x = nx; else d.vx = 0;
+    if (!isSolidAt(d.x, d.y + 0.1, nz)) d.z = nz; else d.vz = 0;
+
+    if (isSurvival() && deadTimer <= 0 && d.age > 0.6) {
+      const dx = player.x - d.x, dy = (player.y + 0.9) - d.y, dz = player.z - d.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist < 0.8) {
+        const left = addItem(d.id, d.count);
+        if (left <= 0) drops.splice(i, 1); else d.count = left;
+        renderHotbar();
+        if (screen === 'inv') renderInv();
+      } else if (dist < 2.2 && countItem(d.id) >= 0) {
+        const sp = 7 * dt / dist;
+        d.x += dx * sp; d.y += dy * sp; d.z += dz * sp;
+      }
+    }
+  }
 }
 
 // Collision Detection
@@ -872,29 +1754,20 @@ function isSolidAt(x, y, z) {
   return id !== 0 && BLOCK_MAP[id].solid;
 }
 
-function collidePlayer(dt) {
-  const hw = 0.3, h = 1.75;
-  // X
-  player.x += player.vx * dt;
-  if (checkBoxSolid(player.x, player.y, player.z, hw, h)) {
-    player.x -= player.vx * dt;
-    player.vx = 0;
-  }
-  // Z
-  player.z += player.vz * dt;
-  if (checkBoxSolid(player.x, player.y, player.z, hw, h)) {
-    player.z -= player.vz * dt;
-    player.vz = 0;
-  }
-  // Y
-  player.y += player.vy * dt;
-  player.onGround = false;
-  if (checkBoxSolid(player.x, player.y, player.z, hw, h)) {
-    if (player.vy < 0) player.onGround = true;
-    player.y -= player.vy * dt;
-    player.vy = 0;
+function collideBody(b, dt, hw, h) {
+  b.x += b.vx * dt;
+  if (checkBoxSolid(b.x, b.y, b.z, hw, h)) { b.x -= b.vx * dt; b.vx = 0; }
+  b.z += b.vz * dt;
+  if (checkBoxSolid(b.x, b.y, b.z, hw, h)) { b.z -= b.vz * dt; b.vz = 0; }
+  b.y += b.vy * dt;
+  b.onGround = false;
+  if (checkBoxSolid(b.x, b.y, b.z, hw, h)) {
+    if (b.vy < 0) { b.onGround = true; b.impact = -b.vy; }
+    b.y -= b.vy * dt;
+    b.vy = 0;
   }
 }
+function collidePlayer(dt) { collideBody(player, dt, 0.3, 1.75); }
 
 function checkBoxSolid(x, y, z, hw, h) {
   const minX = Math.floor(x - hw), maxX = Math.floor(x + hw);
@@ -908,6 +1781,233 @@ function checkBoxSolid(x, y, z, hw, h) {
     }
   }
   return false;
+}
+
+// ---------- Day / night ----------
+function daylight() {
+  const s = Math.sin(worldTime * Math.PI * 2);
+  return Math.max(0, Math.min(1, (s + 0.15) / 0.45));
+}
+function skyColor() {
+  const s = Math.sin(worldTime * Math.PI * 2);
+  const d = daylight();
+  const day = [0.53, 0.81, 0.92], night = [0.015, 0.02, 0.06];
+  const c = night.map((n, i) => n + (day[i] - n) * d);
+  const dusk = Math.max(0, 1 - Math.abs(s) / 0.3) * 0.5;
+  const tint = [0.95, 0.5, 0.3];
+  return c.map((v, i) => v + (tint[i] - v) * dusk);
+}
+function updateTime(dt) {
+  if (!isSurvival()) { worldTime = 0.25; return; }
+  worldTime += dt / (settings.dayLen * 60);
+  if (worldTime >= 1) { worldTime -= 1; dayCount++; }
+}
+function clockText() {
+  const hrs = (6 + worldTime * 24) % 24;
+  const h = Math.floor(hrs), m = Math.floor((hrs - h) * 60);
+  const label = isSurvival() ? 'Survival' : 'Creative';
+  return `${label} | Day ${dayCount} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` + (saveFailed ? ' | SAVE FAILED (storage full)' : '');
+}
+
+// ---------- Player health ----------
+let lastHurt = 99, regenTimer = 0, cactusCd = 0;
+function touchingCactus() {
+  const x0 = Math.floor(player.x - 0.4), x1 = Math.floor(player.x + 0.4);
+  const z0 = Math.floor(player.z - 0.4), z1 = Math.floor(player.z + 0.4);
+  const y0 = Math.floor(player.y + 0.1), y1 = Math.floor(player.y + 1.6);
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) if (getBlock(x, y, z) === 12) return true;
+  return false;
+}
+function damagePlayer(amount, ignoreArmor) {
+  if (!isSurvival() || deadTimer > 0 || amount <= 0) return;
+  let dmg = amount;
+  if (!ignoreArmor) dmg = amount * (1 - Math.min(0.8, armorPoints() * 0.08));
+  hp = Math.max(0, hp - Math.max(1, Math.round(dmg)));
+  lastHurt = 0;
+  const f = document.getElementById('flash');
+  f.style.opacity = 1;
+  setTimeout(() => { f.style.opacity = 0; }, 120);
+  renderHearts();
+  if (hp <= 0) die();
+}
+let deathOutcome = 'respawn', pendingReset = false;
+function die() {
+  deadTimer = 3;
+  if (ridingCart) dismountCart();
+  mouseHeld = false;
+  resetMining();
+  deaths++;
+  let msg;
+  if (settings.difficulty === 'hard') {
+    deathOutcome = 'reset';
+    msg = 'Hard mode: your world, builds and inventory are being erased.';
+  } else if (settings.difficulty === 'normal') {
+    if (deaths <= 3) {
+      maxHp = [8, 4, 2][deaths - 1];
+      deathOutcome = 'respawn';
+      const n = maxHp / 2;
+      msg = `Death ${deaths} of 4. Your max health is now ${n} heart${n > 1 ? 's' : ''}. Respawning...`;
+    } else {
+      deathOutcome = 'reset';
+      msg = 'Death 4 of 4. Starting over with a brand new world...';
+    }
+  } else {
+    deathOutcome = 'respawn';
+    msg = 'Respawning...';
+  }
+  if (deathOutcome === 'reset') {
+    // Erase the save right away so reloading the page cannot undo it
+    pendingReset = true;
+    try { localStorage.removeItem(worldKey()); } catch (e) {}
+  }
+  document.getElementById('deathTitle').textContent = deathOutcome === 'reset' ? 'You Died For Real' : 'You Died';
+  document.getElementById('deathMsg').textContent = msg;
+  document.getElementById('death').style.display = 'flex';
+  renderHearts();
+}
+function respawn() {
+  if (deathOutcome === 'reset') { newWorld(); return; }
+  player.x = 8.5; player.z = 8.5;
+  player.y = terrainHeight(8, 8) + 3;
+  player.vx = player.vy = player.vz = 0;
+  hp = maxHp; lastHurt = 99;
+  mobs.length = 0;
+  document.getElementById('death').style.display = 'none';
+  renderHearts();
+  saveWorld();
+}
+function updateSurvival(dt) {
+  if (deadTimer > 0) {
+    deadTimer -= dt;
+    if (deadTimer <= 0) respawn();
+    return;
+  }
+  if (!isSurvival()) return;
+  if (player.impact) {
+    const dmg = Math.floor(player.impact * player.impact / 48 - 3);
+    if (dmg > 0 && !player.noclip) damagePlayer(dmg, true);
+    player.impact = 0;
+  }
+  cactusCd -= dt;
+  if (cactusCd <= 0 && !player.noclip && touchingCactus()) { damagePlayer(1, true); cactusCd = 0.5; }
+  lastHurt += dt;
+  if (hp < maxHp && lastHurt > 6) {
+    regenTimer += dt;
+    if (regenTimer >= 3) { regenTimer = 0; hp++; renderHearts(); }
+  }
+}
+
+// ---------- Zombies ----------
+const zVerts = [];
+(function buildZombie() {
+  const S = TILE.Z_SKIN, SH = TILE.Z_SHIRT, P = TILE.Z_PANTS;
+  pushBox(zVerts, -0.25, 1.35, -0.25, 0.25, 1.85, 0.25, S, S, S);
+  pushFace(zVerts, 2, -0.25, 1.35, -0.25, 0.25, 1.85, 0.254, TILE.Z_FACE);
+  pushBox(zVerts, -0.25, 0.65, -0.125, 0.25, 1.35, 0.125, SH, SH, SH);
+  pushBox(zVerts, 0.25, 1.02, -0.1, 0.5, 1.3, 0.7, S, S, S);
+  pushBox(zVerts, -0.5, 1.02, -0.1, -0.25, 1.3, 0.7, S, S, S);
+  pushBox(zVerts, -0.25, 0, -0.125, 0, 0.65, 0.125, P, P, P);
+  pushBox(zVerts, 0, 0, -0.125, 0.25, 0.65, 0.125, P, P, P);
+})();
+const zVao = gl.createVertexArray();
+const zVbo = gl.createBuffer();
+gl.bindVertexArray(zVao);
+gl.bindBuffer(gl.ARRAY_BUFFER, zVbo);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(zVerts), gl.STATIC_DRAW);
+setupAttribs();
+const zVertCount = zVerts.length / 7;
+
+function makeZombie(x, y, z) {
+  return { x, y, z, vx: 0, vy: 0, vz: 0, yaw: Math.random() * 6.28, hp: 12, flash: 0, hitCd: 0, kb: 0,
+           burn: 0, wt: 0, wyaw: 0, moving: false, onGround: false };
+}
+function attackMob(m) {
+  const hid = heldId();
+  const dmg = (hid === 21 || hid === 25) ? ITEM_DEFS[hid].damage : 2;
+  m.hp -= dmg;
+  m.flash = 0.25;
+  const dx = m.x - player.x, dz = m.z - player.z, d = Math.hypot(dx, dz) || 1;
+  m.vx = dx / d * 6; m.vz = dz / d * 6; m.vy = 4.5; m.kb = 0.35;
+  if (m.hp <= 0) killMob(m);
+}
+function killMob(m) {
+  const i = mobs.indexOf(m);
+  if (i >= 0) mobs.splice(i, 1);
+  if (isSurvival()) {
+    if (Math.random() < 0.7) spawnDrop(m.x, m.y + 0.6, m.z, 20, 1 + Math.floor(Math.random() * 2));
+    if (Math.random() < 0.3) spawnDrop(m.x, m.y + 0.6, m.z, 5, 1);
+  }
+}
+function canSeeSky(m) {
+  for (let y = Math.floor(m.y + 2); y < CHUNK_HEIGHT; y++) if (isSolidAt(m.x, y, m.z)) return false;
+  return true;
+}
+
+let spawnTimer = 0;
+function updateSpawning(dt) {
+  if (!isSurvival() || !settings.mobs || settings.difficulty === 'peaceful' || deadTimer > 0) return;
+  spawnTimer -= dt;
+  if (spawnTimer > 0) return;
+  spawnTimer = settings.difficulty === 'hard' ? 1.5 : 3;
+  const cap = settings.difficulty === 'hard' ? 14 : 8;
+  if (mobs.length >= cap || daylight() > 0.35) return;
+  const ang = Math.random() * Math.PI * 2, dist = 16 + Math.random() * 14;
+  const sx = Math.floor(player.x + Math.cos(ang) * dist), sz = Math.floor(player.z + Math.sin(ang) * dist);
+  if (!chunks.has(chunkKey(Math.floor(sx / CHUNK_SIZE), Math.floor(sz / CHUNK_SIZE)))) return;
+  let sy = -1;
+  for (let y = CHUNK_HEIGHT - 2; y >= 1; y--) if (isSolidAt(sx, y, sz)) { sy = y + 1; break; }
+  if (sy < 0 || isSolidAt(sx, sy, sz) || isSolidAt(sx, sy + 1, sz)) return;
+  mobs.push(makeZombie(sx + 0.5, sy, sz + 0.5));
+}
+
+function updateMobs(dt) {
+  const dayL = daylight();
+  const hard = settings.difficulty === 'hard';
+  for (let i = mobs.length - 1; i >= 0; i--) {
+    const m = mobs[i];
+    const pd = Math.hypot(player.x - m.x, player.z - m.z);
+    if (pd > 60 || m.y < -5) { mobs.splice(i, 1); continue; }
+    if (!chunks.has(chunkKey(Math.floor(m.x / CHUNK_SIZE), Math.floor(m.z / CHUNK_SIZE)))) continue;
+
+    m.flash = Math.max(0, m.flash - dt);
+    m.hitCd -= dt;
+    m.kb -= dt;
+
+    // Zombies burn in daylight when they can see the sky
+    if (dayL > 0.75 && canSeeSky(m)) {
+      m.burn += dt;
+      if (m.burn >= 1) {
+        m.burn = 0; m.hp -= 2; m.flash = 0.25;
+        if (m.hp <= 0) { killMob(m); continue; }
+      }
+    }
+
+    const chase = isSurvival() && deadTimer <= 0 && pd < 24;
+    if (m.kb <= 0) {
+      let dirX = 0, dirZ = 0, speed = hard ? 3.0 : 2.4;
+      if (chase && pd > 0.05) {
+        dirX = (player.x - m.x) / pd; dirZ = (player.z - m.z) / pd;
+        m.yaw = Math.atan2(dirX, dirZ);
+      } else {
+        m.wt -= dt;
+        if (m.wt <= 0) { m.wt = 2 + Math.random() * 3; m.wyaw = Math.random() * Math.PI * 2; m.moving = Math.random() < 0.6; }
+        if (m.moving) { dirX = Math.sin(m.wyaw); dirZ = Math.cos(m.wyaw); m.yaw = m.wyaw; speed *= 0.5; }
+      }
+      m.vx = dirX * speed; m.vz = dirZ * speed;
+      if (m.onGround && (dirX || dirZ) && isSolidAt(m.x + dirX * 0.6, m.y + 0.3, m.z + dirZ * 0.6)) m.vy = 7.6;
+    } else {
+      const f = Math.pow(0.05, dt);
+      m.vx *= f; m.vz *= f;
+    }
+    m.vy -= 24 * dt;
+    collideBody(m, dt, 0.3, 1.8);
+    m.impact = 0;
+
+    if (chase && pd < 1.1 && Math.abs(player.y - m.y) < 1.5 && m.hitCd <= 0) {
+      m.hitCd = 1.0;
+      damagePlayer(hard ? 6 : 4, false);
+    }
+  }
 }
 
 // Minecart Physics & Track Following
@@ -1103,7 +2203,7 @@ function loop(now) {
   }
 
   // Player movement
-  if (locked && !ridingCart) {
+  if (locked && !ridingCart && deadTimer <= 0) {
     const fwdX = -Math.sin(player.yaw);
     const fwdZ = -Math.cos(player.yaw);
     const rightX = Math.cos(player.yaw);
@@ -1150,7 +2250,17 @@ function loop(now) {
     }
   }
 
-  updateMinecarts(dt);
+  const simulate = locked || screen === 'inv';
+  if (simulate) {
+    updateTime(dt);
+    updateSurvival(dt);
+    updateSpawning(dt);
+    updateMinecarts(dt);
+    updateMobs(dt);
+    updateDrops(dt);
+    updateMining(dt);
+  } else resetMining();
+  document.getElementById('clock').textContent = clockText();
 
   // Update UI prompt
   const promptEl = document.getElementById('prompt');
@@ -1167,7 +2277,7 @@ function loop(now) {
     }
   }
 
-  document.getElementById('pos').textContent = `${player.x.toFixed(1)}, ${player.y.toFixed(1)}, ${player.z.toFixed(1)}`;
+  document.getElementById('pos').textContent = `${player.x.toFixed(1)}, ${player.y.toFixed(1)}, ${player.z.toFixed(1)} | ${biomeAt(Math.floor(player.x), Math.floor(player.z))}`;
 
   // Resize & Render
   if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
@@ -1176,11 +2286,12 @@ function loop(now) {
     gl.viewport(0, 0, canvas.width, canvas.height);
   }
 
-  gl.clearColor(0.53, 0.81, 0.92, 1.0);
+  const sky = skyColor();
+  gl.clearColor(sky[0], sky[1], sky[2], 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   const eyeY = ridingCart ? (ridingCart.y + 1.15) : (player.y + 1.62);
-  const proj = perspective(Math.PI / 2.6, canvas.width / canvas.height, 0.1, 140.0);
+  const proj = perspective(settings.fov * Math.PI / 180, canvas.width / canvas.height, 0.1, 220.0);
   const view = viewMatrix(player.x, eyeY, player.z, player.yaw, player.pitch);
 
   gl.useProgram(prog);
@@ -1188,6 +2299,13 @@ function loop(now) {
   gl.bindTexture(gl.TEXTURE_2D, atlasTex);
   gl.uniformMatrix4fv(uProjLoc, false, proj);
   gl.uniformMatrix4fv(uViewLoc, false, view);
+  gl.uniform1f(uBrightLoc, 0.28 + 0.72 * daylight());
+  gl.uniform3f(uSkyLoc, sky[0], sky[1], sky[2]);
+  const fogEnd = RENDER_DIST * CHUNK_SIZE + 8;
+  gl.uniform1f(uFogStartLoc, settings.fog ? Math.max(16, fogEnd * 0.5) : 1e6);
+  gl.uniform1f(uFogEndLoc, settings.fog ? fogEnd : 2e6);
+  gl.uniform1f(uYawLoc, 0);
+  gl.uniform1f(uFlashLoc, 0);
 
   // Draw Chunks
   for (const ch of chunks.values()) {
@@ -1204,6 +2322,26 @@ function loop(now) {
     gl.uniform3f(uOffsetLoc, cart.x, cart.y, cart.z);
     gl.drawArrays(gl.TRIANGLES, 0, cartVertCount);
   }
+
+  // Draw Zombies
+  gl.bindVertexArray(zVao);
+  for (const m of mobs) {
+    gl.uniform3f(uOffsetLoc, m.x, m.y, m.z);
+    gl.uniform1f(uYawLoc, m.yaw);
+    gl.uniform1f(uFlashLoc, m.flash > 0 ? 0.5 : 0);
+    gl.drawArrays(gl.TRIANGLES, 0, zVertCount);
+  }
+  gl.uniform1f(uFlashLoc, 0);
+
+  // Draw collectible drops
+  for (const d of drops) {
+    const mesh = getDropMesh(d.id);
+    gl.bindVertexArray(mesh.vao);
+    gl.uniform3f(uOffsetLoc, d.x, d.y + 0.12 + Math.sin(d.age * 3) * 0.05, d.z);
+    gl.uniform1f(uYawLoc, d.age * 1.5);
+    gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
+  }
+  gl.uniform1f(uYawLoc, 0);
 
   // Draw Target Block Outline
   if (!ridingCart) {
