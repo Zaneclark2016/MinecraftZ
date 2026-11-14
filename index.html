@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MinecraftZ v6 - Textured</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body { overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #hud {
+    position: fixed; top: 12px; left: 12px; color: #fff;
+    background: rgba(0,0,0,0.55); padding: 10px 14px; border-radius: 8px;
+    font-size: 13px; line-height: 1.5; pointer-events: none;
+  }
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; width: 18px; height: 18px;
+    transform: translate(-50%, -50%); pointer-events: none;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: rgba(255,255,255,0.85);
+  }
+  #crosshair::before { top: 8px; left: 0; width: 18px; height: 2px; }
+  #crosshair::after { left: 8px; top: 0; width: 2px; height: 18px; }
+  #prompt {
+    position: fixed; top: 56%; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); color: #ffd166; padding: 6px 14px;
+    border-radius: 6px; font-size: 14px; font-weight: bold; display: none;
+    pointer-events: none;
+  }
+  #hotbar {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; background: rgba(0,0,0,0.65); padding: 6px;
+    border-radius: 10px; border: 2px solid rgba(255,255,255,0.25);
+  }
+  .slot {
+    width: 66px; height: 66px; border: 2px solid #555; border-radius: 6px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; font-size: 11px; position: relative; background: rgba(255,255,255,0.08);
+  }
+  .slot.active { border-color: #ffd166; background: rgba(255,209,102,0.25); transform: scale(1.06); }
+  .slot-num { position: absolute; top: 3px; left: 5px; font-size: 10px; color: #ccc; }
+  .slot-icon {
+    width: 32px; height: 32px; margin-bottom: 3px;
+    background-size: 100% 100%; background-repeat: no-repeat;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+  }
+  #overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.65); color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; cursor: pointer; z-index: 10;
+  }
+  #overlay h1 { font-size: 38px; margin-bottom: 10px; color: #ffd166; }
+  #overlay p { font-size: 16px; max-width: 520px; line-height: 1.6; color: #eee; }
+</style>
+</head>
+<body>
+<div id="overlay">
+  <h1>MinecraftZ</h1>
+  <p>Click anywhere to play!<br>
+  <b>WASD</b> Move | <b>Space</b> Jump / Climb Up | <b>Shift</b> Crouch / Climb Down<br>
+  <b>E</b> or <b>Right-Click</b> Place Block / Ride Minecart | <b>Left-Click</b> or <b>Q</b> Break Block<br>
+  <b>F</b> Dismount Minecart | <b>N</b> 3D Mouse-Aim Noclip | <b>R</b> New World</p>
+</div>
+<div id="hud">
+  <div><b>FPS:</b> <span id="fps">60</span> | <b>Pos:</b> <span id="pos">0, 0, 0</span></div>
+  <div><b>Mode:</b> <span id="mode">Walking</span> | <b>Seed:</b> <span id="seed">0</span></div>
+  <div><b>Controls:</b> [E / Right-Click] Place or Ride Cart | [Left-Click] Break | [F] Exit Cart | [N] Noclip</div>
+</div>
+<div id="crosshair"></div>
+<div id="prompt">Press [E] or [Right-Click] to Ride Minecart</div>
+<div id="hotbar"></div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false });
+if (!gl) alert('WebGL2 is required to run MinecraftZ.');
+
+// Texture Atlas (16x16 pixel tiles, painted procedurally)
+const T = 16, COLS = 8, ROWS = 4;
+const TILE = {
+  GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, GLASS: 3, LOG_SIDE: 4, LOG_TOP: 5, PLANKS: 6, STONE: 7,
+  LEAVES: 8, LADDER_WOOD: 9, TIE: 10, RAIL: 11, CART_OUT: 12, CART_IN: 13, WHEEL: 14, BLACK: 15,
+  LADDER_ICON: 16, TRACK_ICON: 17, CART_ICON: 18
+};
+
+const atlasCanvas = document.createElement('canvas');
+atlasCanvas.width = COLS * T;
+atlasCanvas.height = ROWS * T;
+
+(function buildAtlas() {
+  const ctx = atlasCanvas.getContext('2d');
+  const img = ctx.createImageData(atlasCanvas.width, atlasCanvas.height);
+  const d = img.data;
+  let seed = 1337;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const jit = (v) => (rnd() - 0.5) * 2 * v;
+  const paint = (tile, fn) => {
+    const ox = (tile % COLS) * T, oy = Math.floor(tile / COLS) * T;
+    for (let y = 0; y < T; y++) {
+      for (let x = 0; x < T; x++) {
+        const p = fn(x, y);
+        const i = ((oy + y) * atlasCanvas.width + (ox + x)) * 4;
+        d[i] = p[0]; d[i + 1] = p[1]; d[i + 2] = p[2]; d[i + 3] = p[3] === undefined ? 255 : p[3];
+      }
+    }
+  };
+
+  // Grass top
+  paint(TILE.GRASS_TOP, () => {
+    const n = jit(16), s = rnd() < 0.08 ? -22 : 0;
+    return [88 + n + s, 158 + n + s, 50 + n * 0.6 + s];
+  });
+
+  // Dirt
+  const dirtPx = () => {
+    const n = jit(13), s = rnd() < 0.1 ? (rnd() < 0.5 ? -28 : 20) : 0;
+    return [121 + n + s, 85 + n + s, 58 + n * 0.8 + s];
+  };
+  paint(TILE.DIRT, dirtPx);
+
+  // Grass side: dirt with ragged grass fringe
+  const depth = [];
+  for (let x = 0; x < T; x++) depth.push(3 + (rnd() < 0.5 ? 1 : 0) + (rnd() < 0.2 ? 1 : 0));
+  paint(TILE.GRASS_SIDE, (x, y) => {
+    if (y < depth[x]) {
+      const n = jit(16), s = rnd() < 0.08 ? -22 : 0;
+      return [88 + n + s, 158 + n + s, 50 + n * 0.6 + s];
+    }
+    return dirtPx();
+  });
+
+  // Stone with dark/light blotches
+  const blot = new Array(T * T).fill(0);
+  for (let k = 0; k < 12; k++) {
+    const bx = Math.floor(rnd() * 14), by = Math.floor(rnd() * 14);
+    const off = rnd() < 0.65 ? -18 : 14;
+    for (let yy = 0; yy < 2; yy++) for (let xx = 0; xx < 2; xx++) blot[(by + yy) * T + bx + xx] = off;
+  }
+  paint(TILE.STONE, (x, y) => {
+    const n = jit(8) + blot[y * T + x];
+    return [124 + n, 124 + n, 127 + n];
+  });
+
+  // Log bark (vertical streaks)
+  const col = [];
+  for (let x = 0; x < T; x++) col.push(jit(12) + (x % 2 ? -8 : 4));
+  paint(TILE.LOG_SIDE, (x) => {
+    let n = col[x] + jit(6);
+    if (rnd() < 0.04) n -= 30;
+    return [104 + n, 82 + n, 50 + n * 0.7];
+  });
+
+  // Log top (rings)
+  paint(TILE.LOG_TOP, (x, y) => {
+    const dist = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+    const n = jit(5);
+    if (dist > 6.5) return [100 + n, 78 + n, 48 + n * 0.7];
+    const ring = Math.floor(dist) % 2 === 0;
+    return ring ? [178 + n, 142 + n, 90 + n * 0.8] : [152 + n, 117 + n, 70 + n * 0.8];
+  });
+
+  // Planks (4 boards with staggered seams)
+  paint(TILE.PLANKS, (x, y) => {
+    const row = Math.floor(y / 4);
+    const seamX = (row % 2) ? 3 : 11;
+    let n = jit(7) + ((row % 2) ? 6 : -4);
+    if (y % 4 === 3 || x === seamX) n -= 28;
+    return [166 + n, 134 + n, 82 + n * 0.8];
+  });
+
+  // Glass (frame + highlights, see-through otherwise)
+  paint(TILE.GLASS, (x, y) => {
+    const border = x === 0 || y === 0 || x === 15 || y === 15;
+    const hl = (x === y && ((x >= 3 && x <= 5) || (x >= 8 && x <= 9)));
+    if (border) return [205, 232, 240, 255];
+    if (hl) return [235, 247, 250, 255];
+    return [0, 0, 0, 0];
+  });
+
+  // Leaves
+  paint(TILE.LEAVES, () => {
+    let n = jit(18);
+    if (rnd() < 0.18) n -= 34;
+    return [52 + n, 128 + n, 38 + n * 0.5];
+  });
+
+  // Ladder wood
+  paint(TILE.LADDER_WOOD, () => { const n = jit(10); return [164 + n, 118 + n, 70 + n * 0.7]; });
+
+  // Track parts
+  paint(TILE.TIE, () => { const n = jit(10); return [108 + n, 76 + n, 46 + n]; });
+  paint(TILE.RAIL, () => { const n = jit(9); return [186 + n, 191 + n, 196 + n]; });
+
+  // Minecart parts
+  paint(TILE.CART_OUT, (x, y) => {
+    const n = jit(7);
+    const edge = x < 1 || x > 14 || y < 1 || y > 14;
+    const rivet = (x === 3 || x === 12) && (y === 3 || y === 12);
+    if (rivet) return [170 + n, 178 + n, 186 + n];
+    if (edge) return [88 + n, 96 + n, 106 + n];
+    return [122 + n, 132 + n, 142 + n];
+  });
+  paint(TILE.CART_IN, () => { const n = jit(6); return [46 + n, 52 + n, 60 + n]; });
+  paint(TILE.WHEEL, () => { const n = jit(5); return [34 + n, 34 + n, 38 + n]; });
+  paint(TILE.BLACK, () => [0, 0, 0]);
+
+  // Hotbar icons for non-cube items
+  paint(TILE.LADDER_ICON, (x, y) => {
+    const rail = (x === 3 || x === 4 || x === 11 || x === 12);
+    const rung = (x >= 3 && x <= 12 && y % 4 === 2);
+    if (rail || rung) { const n = jit(8); return [160 + n, 115 + n, 68 + n]; }
+    return [0, 0, 0, 0];
+  });
+  paint(TILE.TRACK_ICON, (x, y) => {
+    const rail = (x === 4 || x === 5 || x === 10 || x === 11);
+    const tie = (y === 2 || y === 7 || y === 12) && x >= 2 && x <= 13;
+    if (rail) return [190, 195, 200];
+    if (tie) return [110, 78, 48];
+    return [0, 0, 0, 0];
+  });
+  paint(TILE.CART_ICON, (x, y) => {
+    const body = x >= 2 && x <= 13 && y >= 5 && y <= 10;
+    const wheel = (y === 11 || y === 12) && ((x >= 3 && x <= 4) || (x >= 11 && x <= 12));
+    if (wheel) return [34, 34, 38];
+    if (body) return (y === 5 || x === 2 || x === 13) ? [96, 106, 116] : [64, 72, 82];
+    return [0, 0, 0, 0];
+  });
+
+  ctx.putImageData(img, 0, 0);
+})();
+
+const atlasTex = gl.createTexture();
+gl.activeTexture(gl.TEXTURE0);
+gl.bindTexture(gl.TEXTURE_2D, atlasTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlasCanvas);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+const iconCache = {};
+function tileIconURL(tile) {
+  if (iconCache[tile]) return iconCache[tile];
+  const c = document.createElement('canvas');
+  c.width = T; c.height = T;
+  const cx = c.getContext('2d');
+  cx.drawImage(atlasCanvas, (tile % COLS) * T, Math.floor(tile / COLS) * T, T, T, 0, 0, T, T);
+  return (iconCache[tile] = c.toDataURL());
+}
+
+// Block IDs: 0=Air, 1=Grass, 2=Dirt, 3=Glass, 4=Wood, 5=Planks, 6=Stone, 7=Ladder, 8=Track, 9=Minecart(Item), 10=Leaves
+const ITEMS = [
+  { id: 1, name: 'Grass',    top: TILE.GRASS_TOP,   side: TILE.GRASS_SIDE, bot: TILE.DIRT,      icon: TILE.GRASS_TOP,   solid: true,  transparent: false },
+  { id: 2, name: 'Dirt',     top: TILE.DIRT,        side: TILE.DIRT,       bot: TILE.DIRT,      icon: TILE.DIRT,        solid: true,  transparent: false },
+  { id: 3, name: 'Glass',    top: TILE.GLASS,       side: TILE.GLASS,      bot: TILE.GLASS,     icon: TILE.GLASS,       solid: true,  transparent: true  },
+  { id: 4, name: 'Wood',     top: TILE.LOG_TOP,     side: TILE.LOG_SIDE,   bot: TILE.LOG_TOP,   icon: TILE.LOG_SIDE,    solid: true,  transparent: false },
+  { id: 5, name: 'Planks',   top: TILE.PLANKS,      side: TILE.PLANKS,     bot: TILE.PLANKS,    icon: TILE.PLANKS,      solid: true,  transparent: false },
+  { id: 6, name: 'Stone',    top: TILE.STONE,       side: TILE.STONE,      bot: TILE.STONE,     icon: TILE.STONE,       solid: true,  transparent: false },
+  { id: 7, name: 'Ladder',   top: TILE.LADDER_WOOD, side: TILE.LADDER_WOOD, bot: TILE.LADDER_WOOD, icon: TILE.LADDER_ICON, solid: false, transparent: true  },
+  { id: 8, name: 'Track',    top: TILE.RAIL,        side: TILE.TIE,        bot: TILE.TIE,       icon: TILE.TRACK_ICON,  solid: false, transparent: true  },
+  { id: 9, name: 'Minecart', top: TILE.CART_IN,     side: TILE.CART_OUT,   bot: TILE.CART_OUT,  icon: TILE.CART_ICON,   solid: false, transparent: false }
+];
+
+const BLOCK_MAP = {};
+ITEMS.forEach(it => BLOCK_MAP[it.id] = it);
+BLOCK_MAP[10] = { id: 10, name: 'Leaves', top: TILE.LEAVES, side: TILE.LEAVES, bot: TILE.LEAVES, icon: TILE.LEAVES, solid: true, transparent: false };
+
+let selectedSlot = 0;
+const hotbarEl = document.getElementById('hotbar');
+function renderHotbar() {
+  hotbarEl.innerHTML = '';
+  ITEMS.forEach((it, idx) => {
+    const div = document.createElement('div');
+    div.className = 'slot' + (idx === selectedSlot ? ' active' : '');
+    div.innerHTML = `<span class="slot-num">${idx + 1}</span>
+      <div class="slot-icon" style="background-image:url(${tileIconURL(it.icon)});${it.id === 3 ? 'background-color:rgba(178,235,242,0.45);' : ''}"></div>
+      <span>${it.name}</span>`;
+    hotbarEl.appendChild(div);
+  });
+}
+renderHotbar();
+
+// WebGL2 Shaders
+const vsSrc = `#version 300 es
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec2 aUV;
+layout(location=2) in float aLight;
+uniform mat4 uProj;
+uniform mat4 uView;
+uniform vec3 uOffset;
+out vec2 vUV;
+out float vLight;
+out float vFog;
+void main() {
+  vec4 worldPos = vec4(aPos + uOffset, 1.0);
+  vec4 viewPos = uView * worldPos;
+  gl_Position = uProj * viewPos;
+  vUV = aUV;
+  vLight = aLight;
+  float dist = length(viewPos.xyz);
+  vFog = clamp((dist - 55.0) / 45.0, 0.0, 1.0);
+}`;
+
+const fsSrc = `#version 300 es
+precision mediump float;
+in vec2 vUV;
+in float vLight;
+in float vFog;
+uniform sampler2D uTex;
+out vec4 fragColor;
+void main() {
+  vec4 t = texture(uTex, vUV);
+  if (t.a < 0.5) discard;
+  vec3 sky = vec3(0.53, 0.81, 0.92);
+  vec3 col = mix(t.rgb * vLight, sky, vFog);
+  fragColor = vec4(col, 1.0);
+}`;
+
+function compileShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vsSrc));
+gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fsSrc));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const uProjLoc = gl.getUniformLocation(prog, 'uProj');
+const uViewLoc = gl.getUniformLocation(prog, 'uView');
+const uOffsetLoc = gl.getUniformLocation(prog, 'uOffset');
+gl.uniform1i(gl.getUniformLocation(prog, 'uTex'), 0);
+
+gl.enable(gl.DEPTH_TEST);
+gl.enable(gl.CULL_FACE);
+
+// Vertex layout: x, y, z, u, v, light (6 floats = 24 bytes)
+function setupAttribs() {
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 24, 12);
+  gl.enableVertexAttribArray(2);
+  gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 24, 20);
+}
+
+// World & Chunk System
+const CHUNK_SIZE = 16;
+const CHUNK_HEIGHT = 48;
+const RENDER_DIST = 4;
+let worldSeed = Math.floor(Math.random() * 100000);
+document.getElementById('seed').textContent = worldSeed;
+
+const chunks = new Map();
+const buildQueue = [];
+
+function hash2(x, z) {
+  let n = Math.sin(x * 127.1 + z * 311.7 + worldSeed * 0.13) * 43758.5453123;
+  return n - Math.floor(n);
+}
+function smoothNoise(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = x - ix, fz = z - iz;
+  const ux = fx * fx * (3 - 2 * fx), uz = fz * fz * (3 - 2 * fz);
+  const a = hash2(ix, iz), b = hash2(ix + 1, iz);
+  const c = hash2(ix, iz + 1), d = hash2(ix + 1, iz + 1);
+  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
+}
+function terrainHeight(wx, wz) {
+  const n1 = smoothNoise(wx * 0.04, wz * 0.04) * 14;
+  const n2 = smoothNoise(wx * 0.12, wz * 0.12) * 4;
+  return Math.floor(10 + n1 + n2);
+}
+
+function chunkKey(cx, cz) { return `${cx},${cz}`; }
+
+function generateChunkData(cx, cz) {
+  const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+  for (let x = 0; x < CHUNK_SIZE; x++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x;
+      const wz = cz * CHUNK_SIZE + z;
+      const h = terrainHeight(wx, wz);
+      for (let y = 0; y < CHUNK_HEIGHT; y++) {
+        const idx = (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
+        if (y === 0) data[idx] = 6;
+        else if (y < h - 3) data[idx] = 6;
+        else if (y < h) data[idx] = 2;
+        else if (y === h) data[idx] = 1;
+      }
+      // Occasional trees
+      if (hash2(wx * 3.1, wz * 7.3) > 0.985 && x > 2 && x < 13 && z > 2 && z < 13 && h + 6 < CHUNK_HEIGHT) {
+        for (let ty = 1; ty <= 4; ty++) {
+          data[((h + ty) * CHUNK_SIZE + z) * CHUNK_SIZE + x] = 4;
+        }
+        for (let lx = -2; lx <= 2; lx++) {
+          for (let lz = -2; lz <= 2; lz++) {
+            for (let ly = 3; ly <= 5; ly++) {
+              if (Math.abs(lx) + Math.abs(lz) + Math.abs(ly - 4) <= 3) {
+                const idx = ((h + ly) * CHUNK_SIZE + (z + lz)) * CHUNK_SIZE + (x + lx);
+                if (data[idx] === 0) data[idx] = 10;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return data;
+}
+
+function getChunk(cx, cz, create = true) {
+  const key = chunkKey(cx, cz);
+  let ch = chunks.get(key);
+  if (!ch && create) {
+    ch = { cx, cz, data: generateChunkData(cx, cz), vao: null, vbo: null, count: 0, dirty: true };
+    chunks.set(key, ch);
+    buildQueue.push(ch);
+  }
+  return ch;
+}
+
+function getBlock(wx, wy, wz) {
+  if (wy < 0 || wy >= CHUNK_HEIGHT) return 0;
+  const cx = Math.floor(wx / CHUNK_SIZE);
+  const cz = Math.floor(wz / CHUNK_SIZE);
+  const ch = chunks.get(chunkKey(cx, cz));
+  if (!ch) return 0;
+  const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+  const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+  return ch.data[(wy * CHUNK_SIZE + lz) * CHUNK_SIZE + lx];
+}
+
+function setBlock(wx, wy, wz, id) {
+  if (wy < 1 || wy >= CHUNK_HEIGHT) return;
+  const cx = Math.floor(wx / CHUNK_SIZE);
+  const cz = Math.floor(wz / CHUNK_SIZE);
+  const ch = getChunk(cx, cz, true);
+  const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+  const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+  ch.data[(wy * CHUNK_SIZE + lz) * CHUNK_SIZE + lx] = id;
+  markChunkDirty(cx, cz);
+  if (lx === 0) markChunkDirty(cx - 1, cz);
+  if (lx === CHUNK_SIZE - 1) markChunkDirty(cx + 1, cz);
+  if (lz === 0) markChunkDirty(cx, cz - 1);
+  if (lz === CHUNK_SIZE - 1) markChunkDirty(cx, cz + 1);
+}
+
+function markChunkDirty(cx, cz) {
+  const ch = chunks.get(chunkKey(cx, cz));
+  if (ch && !ch.dirty) {
+    ch.dirty = true;
+    buildQueue.push(ch);
+  }
+}
+
+// Geometry Helpers
+const UV_SIDE = [[0, 1], [1, 1], [1, 0], [0, 0]];
+const UV_FLAT = [[0, 0], [1, 0], [1, 1], [0, 1]];
+const QUAD_ORDER = [0, 1, 2, 0, 2, 3];
+const FACE_LIGHT = [1.0, 0.55, 0.85, 0.85, 0.75, 0.75];
+const UV_INSET = 0.02;
+
+// face: 0=Top(+Y) 1=Bottom(-Y) 2=Front(+Z) 3=Back(-Z) 4=Right(+X) 5=Left(-X)
+function pushFace(verts, face, x0, y0, z0, x1, y1, z1, tile) {
+  let P, uvs;
+  switch (face) {
+    case 0: P = [[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0]]; uvs = UV_FLAT; break;
+    case 1: P = [[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]]; uvs = UV_FLAT; break;
+    case 2: P = [[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]; uvs = UV_SIDE; break;
+    case 3: P = [[x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0]]; uvs = UV_SIDE; break;
+    case 4: P = [[x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1]]; uvs = UV_SIDE; break;
+    default: P = [[x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0]]; uvs = UV_SIDE; break;
+  }
+  const tx = tile % COLS, ty = Math.floor(tile / COLS);
+  const light = FACE_LIGHT[face];
+  const span = 1 - 2 * UV_INSET;
+  for (let k = 0; k < 6; k++) {
+    const i = QUAD_ORDER[k];
+    const u = (tx + UV_INSET + uvs[i][0] * span) / COLS;
+    const v = (ty + UV_INSET + uvs[i][1] * span) / ROWS;
+    verts.push(P[i][0], P[i][1], P[i][2], u, v, light);
+  }
+}
+
+function pushBox(verts, x0, y0, z0, x1, y1, z1, topT, sideT, botT) {
+  pushFace(verts, 0, x0, y0, z0, x1, y1, z1, topT);
+  pushFace(verts, 1, x0, y0, z0, x1, y1, z1, botT);
+  pushFace(verts, 2, x0, y0, z0, x1, y1, z1, sideT);
+  pushFace(verts, 3, x0, y0, z0, x1, y1, z1, sideT);
+  pushFace(verts, 4, x0, y0, z0, x1, y1, z1, sideT);
+  pushFace(verts, 5, x0, y0, z0, x1, y1, z1, sideT);
+}
+
+function buildChunkMesh(ch) {
+  const verts = [];
+  const baseX = ch.cx * CHUNK_SIZE;
+  const baseZ = ch.cz * CHUNK_SIZE;
+  const isOpaque = (b) => b !== 0 && !BLOCK_MAP[b].transparent;
+
+  for (let y = 0; y < CHUNK_HEIGHT; y++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      for (let x = 0; x < CHUNK_SIZE; x++) {
+        const id = ch.data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x];
+        if (id === 0) continue;
+        const wx = baseX + x, wz = baseZ + z;
+        const info = BLOCK_MAP[id];
+
+        if (id === 7) {
+          // Ladder rungs
+          const W = TILE.LADDER_WOOD;
+          pushBox(verts, x+0.12, y, z+0.02, x+0.24, y+1, z+0.14, W, W, W);
+          pushBox(verts, x+0.76, y, z+0.02, x+0.88, y+1, z+0.14, W, W, W);
+          for (let r = 0.15; r < 0.95; r += 0.25) {
+            pushBox(verts, x+0.12, y+r, z+0.02, x+0.88, y+r+0.08, z+0.14, W, W, W);
+          }
+          continue;
+        }
+
+        if (id === 8) {
+          // Track: wood ties + iron rails oriented along connected neighbors
+          const nZ = (getBlock(wx, y, wz - 1) === 8 || getBlock(wx, y, wz + 1) === 8);
+          const nX = (getBlock(wx - 1, y, wz) === 8 || getBlock(wx + 1, y, wz) === 8);
+          const TI = TILE.TIE, RA = TILE.RAIL;
+          if (nX && !nZ) {
+            for (let t = 0.1; t < 0.95; t += 0.28) {
+              pushBox(verts, x+t, y, z+0.12, x+t+0.14, y+0.05, z+0.88, TI, TI, TI);
+            }
+            pushBox(verts, x, y+0.05, z+0.20, x+1, y+0.12, z+0.30, RA, RA, RA);
+            pushBox(verts, x, y+0.05, z+0.70, x+1, y+0.12, z+0.80, RA, RA, RA);
+          } else {
+            for (let t = 0.1; t < 0.95; t += 0.28) {
+              pushBox(verts, x+0.12, y, z+t, x+0.88, y+0.05, z+t+0.14, TI, TI, TI);
+            }
+            pushBox(verts, x+0.20, y+0.05, z, x+0.30, y+0.12, z+1, RA, RA, RA);
+            pushBox(verts, x+0.70, y+0.05, z, x+0.80, y+0.12, z+1, RA, RA, RA);
+          }
+          continue;
+        }
+
+        const bTop = getBlock(wx, y + 1, wz);
+        const bBot = getBlock(wx, y - 1, wz);
+        const bPz  = getBlock(wx, y, wz + 1);
+        const bNz  = getBlock(wx, y, wz - 1);
+        const bPx  = getBlock(wx + 1, y, wz);
+        const bNx  = getBlock(wx - 1, y, wz);
+
+        const showFace = (nb) => id === 3 ? (nb !== 3 && !isOpaque(nb)) : !isOpaque(nb);
+
+        if (showFace(bTop))          pushFace(verts, 0, x, y, z, x+1, y+1, z+1, info.top);
+        if (y > 0 && showFace(bBot)) pushFace(verts, 1, x, y, z, x+1, y+1, z+1, info.bot);
+        if (showFace(bPz))           pushFace(verts, 2, x, y, z, x+1, y+1, z+1, info.side);
+        if (showFace(bNz))           pushFace(verts, 3, x, y, z, x+1, y+1, z+1, info.side);
+        if (showFace(bPx))           pushFace(verts, 4, x, y, z, x+1, y+1, z+1, info.side);
+        if (showFace(bNx))           pushFace(verts, 5, x, y, z, x+1, y+1, z+1, info.side);
+      }
+    }
+  }
+
+  if (!ch.vao) {
+    ch.vao = gl.createVertexArray();
+    ch.vbo = gl.createBuffer();
+  }
+  gl.bindVertexArray(ch.vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, ch.vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+  setupAttribs();
+  ch.count = verts.length / 6;
+  ch.dirty = false;
+}
+
+// Minecart Entity System
+const minecarts = [];
+let ridingCart = null;
+
+// Build shared Minecart VAO
+const cartVerts = [];
+const CI = TILE.CART_IN, CO = TILE.CART_OUT, CW = TILE.WHEEL;
+// Floor & 4 walls
+pushBox(cartVerts, -0.42, 0.12, -0.52,  0.42, 0.22,  0.52, CI, CO, CO);
+pushBox(cartVerts, -0.42, 0.22, -0.52, -0.32, 0.68,  0.52, CO, CO, CO);
+pushBox(cartVerts,  0.32, 0.22, -0.52,  0.42, 0.68,  0.52, CO, CO, CO);
+pushBox(cartVerts, -0.32, 0.22, -0.52,  0.32, 0.68, -0.42, CO, CO, CO);
+pushBox(cartVerts, -0.32, 0.22,  0.42,  0.32, 0.68,  0.52, CO, CO, CO);
+// 4 Wheels
+pushBox(cartVerts, -0.46, 0.0, -0.38, -0.36, 0.16, -0.22, CW, CW, CW);
+pushBox(cartVerts,  0.36, 0.0, -0.38,  0.46, 0.16, -0.22, CW, CW, CW);
+pushBox(cartVerts, -0.46, 0.0,  0.22, -0.36, 0.16,  0.38, CW, CW, CW);
+pushBox(cartVerts,  0.36, 0.0,  0.22,  0.46, 0.16,  0.38, CW, CW, CW);
+
+const cartVao = gl.createVertexArray();
+const cartVbo = gl.createBuffer();
+gl.bindVertexArray(cartVao);
+gl.bindBuffer(gl.ARRAY_BUFFER, cartVbo);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cartVerts), gl.STATIC_DRAW);
+setupAttribs();
+const cartVertCount = cartVerts.length / 6;
+
+// Highlight wireframe VAO
+const hlVerts = [];
+const e0 = -0.005, e1 = 1.005;
+const hlU = (TILE.BLACK % COLS + 0.5) / COLS;
+const hlV = (Math.floor(TILE.BLACK / COLS) + 0.5) / ROWS;
+const edges = [
+  [e0,e0,e0, e1,e0,e0], [e1,e0,e0, e1,e0,e1], [e1,e0,e1, e0,e0,e1], [e0,e0,e1, e0,e0,e0],
+  [e0,e1,e0, e1,e1,e0], [e1,e1,e0, e1,e1,e1], [e1,e1,e1, e0,e1,e1], [e0,e1,e1, e0,e1,e0],
+  [e0,e0,e0, e0,e1,e0], [e1,e0,e0, e1,e1,e0], [e1,e0,e1, e1,e1,e1], [e0,e0,e1, e0,e1,e1]
+];
+edges.forEach(e => {
+  hlVerts.push(e[0],e[1],e[2], hlU,hlV, 1, e[3],e[4],e[5], hlU,hlV, 1);
+});
+const hlVao = gl.createVertexArray();
+const hlVbo = gl.createBuffer();
+gl.bindVertexArray(hlVao);
+gl.bindBuffer(gl.ARRAY_BUFFER, hlVbo);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(hlVerts), gl.STATIC_DRAW);
+setupAttribs();
+
+// Player State
+const player = {
+  x: 8.5, y: 28, z: 8.5,
+  vx: 0, vy: 0, vz: 0,
+  yaw: 0, pitch: -0.2,
+  onGround: false,
+  noclip: false
+};
+
+// Pre-generate spawn area & sample track + minecart
+for (let cx = -2; cx <= 2; cx++) {
+  for (let cz = -2; cz <= 2; cz++) getChunk(cx, cz, true);
+}
+player.y = terrainHeight(8, 8) + 3;
+
+// Input handling
+const keys = {};
+let locked = false;
+const overlay = document.getElementById('overlay');
+overlay.addEventListener('click', () => canvas.requestPointerLock());
+document.addEventListener('pointerlockchange', () => {
+  locked = (document.pointerLockElement === canvas);
+  overlay.style.display = locked ? 'none' : 'flex';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!locked) return;
+  player.yaw -= e.movementX * 0.0024;
+  player.pitch = Math.max(-1.52, Math.min(1.52, player.pitch - e.movementY * 0.0024));
+});
+
+window.addEventListener('wheel', (e) => {
+  if (!locked) return;
+  selectedSlot = (selectedSlot + (e.deltaY > 0 ? 1 : -1) + ITEMS.length) % ITEMS.length;
+  renderHotbar();
+});
+
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.code.startsWith('Digit')) {
+    const n = parseInt(e.code.replace('Digit', ''), 10) - 1;
+    if (n >= 0 && n < ITEMS.length) {
+      selectedSlot = n;
+      renderHotbar();
+    }
+  }
+  if (e.code === 'KeyN') {
+    if (ridingCart) dismountCart();
+    player.noclip = !player.noclip;
+    player.vy = 0;
+    document.getElementById('mode').textContent = player.noclip ? 'Noclip (3D Aim)' : 'Walking';
+  }
+  if (e.code === 'KeyE') {
+    handleUseOrPlace();
+  }
+  if (e.code === 'KeyQ') {
+    handleBreak();
+  }
+  if (e.code === 'KeyF') {
+    if (ridingCart) dismountCart();
+  }
+  if (e.code === 'KeyR') {
+    if (ridingCart) dismountCart();
+    chunks.clear();
+    buildQueue.length = 0;
+    minecarts.length = 0;
+    worldSeed = Math.floor(Math.random() * 100000);
+    document.getElementById('seed').textContent = worldSeed;
+    for (let cx = -2; cx <= 2; cx++) {
+      for (let cz = -2; cz <= 2; cz++) getChunk(cx, cz, true);
+    }
+    player.x = 8.5; player.z = 8.5;
+    player.y = terrainHeight(8, 8) + 3;
+    player.vx = player.vy = player.vz = 0;
+  }
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!locked) return;
+  if (e.button === 0) handleBreak();
+  if (e.button === 2) handleUseOrPlace();
+});
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Raycast helper for blocks and minecarts
+function getLookDir() {
+  const cp = Math.cos(player.pitch);
+  return {
+    x: -Math.sin(player.yaw) * cp,
+    y: Math.sin(player.pitch),
+    z: -Math.cos(player.yaw) * cp
+  };
+}
+
+function raycastTarget() {
+  const eyeX = player.x;
+  const eyeY = ridingCart ? (ridingCart.y + 1.15) : (player.y + 1.62);
+  const eyeZ = player.z;
+  const dir = getLookDir();
+
+  let hitCart = null;
+  let bestCartDist = 5.5;
+
+  for (const cart of minecarts) {
+    if (cart === ridingCart) continue;
+    // Ray vs AABB around minecart
+    const minX = cart.x - 0.55, maxX = cart.x + 0.55;
+    const minY = cart.y,        maxY = cart.y + 0.85;
+    const minZ = cart.z - 0.55, maxZ = cart.z + 0.55;
+
+    let tmin = 0, tmax = bestCartDist;
+    const axes = [
+      [eyeX, dir.x, minX, maxX],
+      [eyeY, dir.y, minY, maxY],
+      [eyeZ, dir.z, minZ, maxZ]
+    ];
+    let hit = true;
+    for (const [o, d, bmin, bmax] of axes) {
+      if (Math.abs(d) < 1e-6) {
+        if (o < bmin || o > bmax) { hit = false; break; }
+      } else {
+        let t1 = (bmin - o) / d;
+        let t2 = (bmax - o) / d;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
+        if (tmin > tmax) { hit = false; break; }
+      }
+    }
+    if (hit && tmin < bestCartDist) {
+      bestCartDist = tmin;
+      hitCart = cart;
+    }
+  }
+
+  let hitBlock = null;
+  let prevX = Math.floor(eyeX), prevY = Math.floor(eyeY), prevZ = Math.floor(eyeZ);
+  const step = 0.05;
+  for (let d = 0.2; d <= 5.5; d += step) {
+    const px = eyeX + dir.x * d;
+    const py = eyeY + dir.y * d;
+    const pz = eyeZ + dir.z * d;
+    const bx = Math.floor(px), by = Math.floor(py), bz = Math.floor(pz);
+    const id = getBlock(bx, by, bz);
+    if (id !== 0) {
+      hitBlock = { bx, by, bz, px: prevX, py: prevY, pz: prevZ, id, dist: d };
+      break;
+    }
+    prevX = bx; prevY = by; prevZ = bz;
+  }
+
+  if (hitCart && (!hitBlock || bestCartDist <= hitBlock.dist + 0.15)) {
+    return { type: 'cart', cart: hitCart };
+  }
+  if (hitBlock) {
+    return { type: 'block', ...hitBlock };
+  }
+  return null;
+}
+
+function mountCart(cart) {
+  ridingCart = cart;
+  player.noclip = false;
+  player.vx = player.vy = player.vz = 0;
+  document.getElementById('mode').textContent = 'Riding Minecart ([W/S] Drive, [F] Exit)';
+}
+
+function dismountCart() {
+  if (!ridingCart) return;
+  player.x = ridingCart.x + 0.9;
+  player.y = ridingCart.y + 0.2;
+  player.z = ridingCart.z;
+  player.vx = player.vy = player.vz = 0;
+  ridingCart = null;
+  document.getElementById('mode').textContent = 'Walking';
+}
+
+function handleUseOrPlace() {
+  if (ridingCart) {
+    dismountCart();
+    return;
+  }
+
+  const target = raycastTarget();
+
+  // 1. Directly looking at a minecart -> Mount it!
+  if (target && target.type === 'cart') {
+    mountCart(target.cart);
+    return;
+  }
+
+  // 2. Also check if a minecart is sitting right on the targeted track block
+  if (target && target.type === 'block') {
+    const nearbyCart = minecarts.find(c =>
+      Math.abs(c.x - (target.bx + 0.5)) < 0.75 &&
+      Math.abs(c.y - target.by) < 0.8 &&
+      Math.abs(c.z - (target.bz + 0.5)) < 0.75
+    );
+    if (nearbyCart) {
+      mountCart(nearbyCart);
+      return;
+    }
+  }
+
+  if (!target || target.type !== 'block') return;
+  const item = ITEMS[selectedSlot];
+
+  // 3. Placing a Minecart item
+  if (item.id === 9) {
+    let spawnX = target.px + 0.5;
+    let spawnY = target.py;
+    let spawnZ = target.pz + 0.5;
+    // If clicking directly on a track block, snap the minecart onto that track!
+    if (target.id === 8) {
+      spawnX = target.bx + 0.5;
+      spawnY = target.by + 0.08;
+      spawnZ = target.bz + 0.5;
+    }
+    minecarts.push({ x: spawnX, y: spawnY, z: spawnZ, vx: 0, vy: 0, vz: 0 });
+    return;
+  }
+
+  // 4. Placing a standard block
+  const { px, py, pz } = target;
+  // Prevent placing solid blocks inside player body
+  if (item.solid) {
+    const overlapX = (px + 1 > player.x - 0.3) && (px < player.x + 0.3);
+    const overlapY = (py + 1 > player.y) && (py < player.y + 1.75);
+    const overlapZ = (pz + 1 > player.z - 0.3) && (pz < player.z + 0.3);
+    if (overlapX && overlapY && overlapZ) return;
+  }
+  setBlock(px, py, pz, item.id);
+}
+
+function handleBreak() {
+  const target = raycastTarget();
+  if (!target) return;
+  if (target.type === 'cart') {
+    const idx = minecarts.indexOf(target.cart);
+    if (idx !== -1) minecarts.splice(idx, 1);
+    return;
+  }
+  setBlock(target.bx, target.by, target.bz, 0);
+}
+
+// Collision Detection
+function isSolidAt(x, y, z) {
+  const id = getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+  return id !== 0 && BLOCK_MAP[id].solid;
+}
+
+function collidePlayer(dt) {
+  const hw = 0.3, h = 1.75;
+  // X
+  player.x += player.vx * dt;
+  if (checkBoxSolid(player.x, player.y, player.z, hw, h)) {
+    player.x -= player.vx * dt;
+    player.vx = 0;
+  }
+  // Z
+  player.z += player.vz * dt;
+  if (checkBoxSolid(player.x, player.y, player.z, hw, h)) {
+    player.z -= player.vz * dt;
+    player.vz = 0;
+  }
+  // Y
+  player.y += player.vy * dt;
+  player.onGround = false;
+  if (checkBoxSolid(player.x, player.y, player.z, hw, h)) {
+    if (player.vy < 0) player.onGround = true;
+    player.y -= player.vy * dt;
+    player.vy = 0;
+  }
+}
+
+function checkBoxSolid(x, y, z, hw, h) {
+  const minX = Math.floor(x - hw), maxX = Math.floor(x + hw);
+  const minY = Math.floor(y + 0.01), maxY = Math.floor(y + h);
+  const minZ = Math.floor(z - hw), maxZ = Math.floor(z + hw);
+  for (let bx = minX; bx <= maxX; bx++) {
+    for (let by = minY; by <= maxY; by++) {
+      for (let bz = minZ; bz <= maxZ; bz++) {
+        if (isSolidAt(bx, by, bz)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Minecart Physics & Track Following
+function updateMinecarts(dt) {
+  for (const cart of minecarts) {
+    const bx = Math.floor(cart.x);
+    const by = Math.floor(cart.y + 0.1);
+    const bz = Math.floor(cart.z);
+    const blockHere = getBlock(bx, by, bz);
+    const blockBelow = getBlock(bx, by - 1, bz);
+
+    const onTrack = (blockHere === 8);
+
+    // Player driving input while riding
+    if (cart === ridingCart) {
+      const fwdX = -Math.sin(player.yaw);
+      const fwdZ = -Math.cos(player.yaw);
+      let throttle = 0;
+      if (keys['KeyW'] || keys['ArrowUp']) throttle += 1;
+      if (keys['KeyS'] || keys['ArrowDown']) throttle -= 1;
+
+      if (throttle !== 0) {
+        const accel = onTrack ? 18.0 : 6.0;
+        cart.vx += fwdX * throttle * accel * dt;
+        cart.vz += fwdZ * throttle * accel * dt;
+      }
+    } else {
+      // Gentle push if player walks into an unmounted cart
+      const dx = cart.x - player.x;
+      const dz = cart.z - player.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 0.85 && dist > 0.01 && Math.abs(cart.y - player.y) < 1.2) {
+        cart.vx += (dx / dist) * 6.0 * dt;
+        cart.vz += (dz / dist) * 6.0 * dt;
+      }
+    }
+
+    if (onTrack) {
+      cart.y = by + 0.08;
+      cart.vy = 0;
+
+      const tPx = getBlock(bx + 1, by, bz) === 8;
+      const tNx = getBlock(bx - 1, by, bz) === 8;
+      const tPz = getBlock(bx, by, bz + 1) === 8;
+      const tNz = getBlock(bx, by, bz - 1) === 8;
+
+      const trackX = tPx || tNx;
+      const trackZ = tPz || tNz;
+
+      // Constrain velocity and center onto rail axis
+      if (trackX && !trackZ) {
+        cart.vz = 0;
+        cart.z += ((bz + 0.5) - cart.z) * Math.min(1, dt * 15);
+      } else if (trackZ && !trackX) {
+        cart.vx = 0;
+        cart.x += ((bx + 0.5) - cart.x) * Math.min(1, dt * 15);
+      } else if (trackX && trackZ) {
+        // Corner / junction: redirect momentum along the open track branch
+        const cx = bx + 0.5, cz = bz + 0.5;
+        if (Math.abs(cart.x - cx) < 0.25 && Math.abs(cart.z - cz) < 0.25) {
+          const speed = Math.hypot(cart.vx, cart.vz);
+          if (Math.abs(cart.vx) > Math.abs(cart.vz)) {
+            if ((cart.vx > 0 && !tPx) || (cart.vx < 0 && !tNx)) {
+              cart.vx = 0;
+              cart.vz = tPz ? speed : (tNz ? -speed : 0);
+            }
+          } else {
+            if ((cart.vz > 0 && !tPz) || (cart.vz < 0 && !tNz)) {
+              cart.vz = 0;
+              cart.vx = tPx ? speed : (tNx ? -speed : 0);
+            }
+          }
+        }
+      }
+
+      // Low rolling friction on tracks so rides glide smoothly
+      const drag = Math.pow(0.88, dt);
+      cart.vx *= drag;
+      cart.vz *= drag;
+    } else {
+      // Gravity & ground friction off tracks
+      cart.vy -= 24.0 * dt;
+      cart.y += cart.vy * dt;
+      const groundY = Math.floor(cart.y);
+      if (isSolidAt(cart.x, groundY, cart.z)) {
+        cart.y = groundY + 1.0;
+        cart.vy = 0;
+      }
+      const drag = Math.pow(0.05, dt);
+      cart.vx *= drag;
+      cart.vz *= drag;
+    }
+
+    // Clamp max speed
+    const maxSpd = 14.0;
+    const spd = Math.hypot(cart.vx, cart.vz);
+    if (spd > maxSpd) {
+      cart.vx = (cart.vx / spd) * maxSpd;
+      cart.vz = (cart.vz / spd) * maxSpd;
+    }
+
+    // Move & block-wall bounce
+    const nextX = cart.x + cart.vx * dt;
+    if (isSolidAt(nextX + Math.sign(cart.vx) * 0.4, cart.y + 0.3, cart.z)) {
+      cart.vx = 0;
+    } else {
+      cart.x = nextX;
+    }
+
+    const nextZ = cart.z + cart.vz * dt;
+    if (isSolidAt(cart.x, cart.y + 0.3, nextZ + Math.sign(cart.vz) * 0.4)) {
+      cart.vz = 0;
+    } else {
+      cart.z = nextZ;
+    }
+  }
+
+  if (ridingCart) {
+    player.x = ridingCart.x;
+    player.y = ridingCart.y + 0.15;
+    player.z = ridingCart.z;
+  }
+}
+
+// Matrix Math
+function perspective(fov, aspect, near, far) {
+  const f = 1.0 / Math.tan(fov / 2);
+  const nf = 1 / (near - far);
+  return new Float32Array([
+    f / aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (far + near) * nf, -1,
+    0, 0, (2 * far * near) * nf, 0
+  ]);
+}
+
+function viewMatrix(px, py, pz, yaw, pitch) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+
+  const rx = cy, ry = 0, rz = -sy;
+  const ux = sy * sp, uy = cp, uz = cy * sp;
+  const fx = sy * cp, fy = -sp, fz = cy * cp;
+
+  return new Float32Array([
+    rx, ux, fx, 0,
+    ry, uy, fy, 0,
+    rz, uz, fz, 0,
+    -(rx*px + ry*py + rz*pz),
+    -(ux*px + uy*py + uz*pz),
+    -(fx*px + fy*py + fz*pz),
+    1
+  ]);
+}
+
+// Main Loop
+let lastTime = performance.now();
+let frames = 0, fpsTimer = 0;
+
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+
+  frames++;
+  fpsTimer += dt;
+  if (fpsTimer >= 0.5) {
+    document.getElementById('fps').textContent = Math.round(frames / fpsTimer);
+    frames = 0; fpsTimer = 0;
+  }
+
+  // Stream chunks around player & build max 1 chunk per frame
+  const pcx = Math.floor(player.x / CHUNK_SIZE);
+  const pcz = Math.floor(player.z / CHUNK_SIZE);
+  for (let dx = -RENDER_DIST; dx <= RENDER_DIST; dx++) {
+    for (let dz = -RENDER_DIST; dz <= RENDER_DIST; dz++) {
+      if (dx * dx + dz * dz <= RENDER_DIST * RENDER_DIST) {
+        getChunk(pcx + dx, pcz + dz, true);
+      }
+    }
+  }
+  for (const [key, ch] of chunks) {
+    if (Math.abs(ch.cx - pcx) > RENDER_DIST + 2 || Math.abs(ch.cz - pcz) > RENDER_DIST + 2) {
+      if (ch.vao) gl.deleteVertexArray(ch.vao);
+      if (ch.vbo) gl.deleteBuffer(ch.vbo);
+      chunks.delete(key);
+    }
+  }
+  if (buildQueue.length > 0) {
+    const nextCh = buildQueue.shift();
+    if (nextCh && chunks.has(chunkKey(nextCh.cx, nextCh.cz))) {
+      buildChunkMesh(nextCh);
+    }
+  }
+
+  // Player movement
+  if (locked && !ridingCart) {
+    const fwdX = -Math.sin(player.yaw);
+    const fwdZ = -Math.cos(player.yaw);
+    const rightX = Math.cos(player.yaw);
+    const rightZ = -Math.sin(player.yaw);
+
+    let moveF = (keys['KeyW'] || keys['ArrowUp'] ? 1 : 0) - (keys['KeyS'] || keys['ArrowDown'] ? 1 : 0);
+    let moveR = (keys['KeyD'] || keys['ArrowRight'] ? 1 : 0) - (keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0);
+
+    if (player.noclip) {
+      const look = getLookDir();
+      const speed = keys['ControlLeft'] ? 28.0 : 14.0;
+      let vx = (look.x * moveF + rightX * moveR);
+      let vy = (look.y * moveF) + (keys['Space'] ? 1 : 0) - (keys['ShiftLeft'] ? 1 : 0);
+      let vz = (look.z * moveF + rightZ * moveR);
+      const len = Math.hypot(vx, vy, vz);
+      if (len > 0) { vx /= len; vy /= len; vz /= len; }
+      player.x += vx * speed * dt;
+      player.y += vy * speed * dt;
+      player.z += vz * speed * dt;
+    } else {
+      const speed = 6.2;
+      let mx = fwdX * moveF + rightX * moveR;
+      let mz = fwdZ * moveF + rightZ * moveR;
+      const len = Math.hypot(mx, mz);
+      if (len > 0) { mx /= len; mz /= len; }
+      player.vx = mx * speed;
+      player.vz = mz * speed;
+
+      const onLadder = getBlock(Math.floor(player.x), Math.floor(player.y + 0.5), Math.floor(player.z)) === 7 ||
+                       getBlock(Math.floor(player.x), Math.floor(player.y + 1.2), Math.floor(player.z)) === 7;
+
+      if (onLadder) {
+        player.vy = 0;
+        if (keys['Space']) player.vy = 5.0;
+        if (keys['ShiftLeft']) player.vy = -5.0;
+      } else {
+        if (keys['Space'] && player.onGround) {
+          player.vy = 8.4;
+          player.onGround = false;
+        }
+        player.vy -= 24.0 * dt;
+      }
+      collidePlayer(dt);
+    }
+  }
+
+  updateMinecarts(dt);
+
+  // Update UI prompt
+  const promptEl = document.getElementById('prompt');
+  if (ridingCart) {
+    promptEl.style.display = 'block';
+    promptEl.textContent = 'Riding Minecart — [W/S] Drive | [F] or [E] Dismount';
+  } else {
+    const tgt = raycastTarget();
+    if (tgt && tgt.type === 'cart') {
+      promptEl.style.display = 'block';
+      promptEl.textContent = 'Press [E] or [Right-Click] to Ride Minecart';
+    } else {
+      promptEl.style.display = 'none';
+    }
+  }
+
+  document.getElementById('pos').textContent = `${player.x.toFixed(1)}, ${player.y.toFixed(1)}, ${player.z.toFixed(1)}`;
+
+  // Resize & Render
+  if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+
+  gl.clearColor(0.53, 0.81, 0.92, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  const eyeY = ridingCart ? (ridingCart.y + 1.15) : (player.y + 1.62);
+  const proj = perspective(Math.PI / 2.6, canvas.width / canvas.height, 0.1, 140.0);
+  const view = viewMatrix(player.x, eyeY, player.z, player.yaw, player.pitch);
+
+  gl.useProgram(prog);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, atlasTex);
+  gl.uniformMatrix4fv(uProjLoc, false, proj);
+  gl.uniformMatrix4fv(uViewLoc, false, view);
+
+  // Draw Chunks
+  for (const ch of chunks.values()) {
+    if (ch.vao && ch.count > 0) {
+      gl.uniform3f(uOffsetLoc, ch.cx * CHUNK_SIZE, 0, ch.cz * CHUNK_SIZE);
+      gl.bindVertexArray(ch.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, ch.count);
+    }
+  }
+
+  // Draw Minecarts
+  gl.bindVertexArray(cartVao);
+  for (const cart of minecarts) {
+    gl.uniform3f(uOffsetLoc, cart.x, cart.y, cart.z);
+    gl.drawArrays(gl.TRIANGLES, 0, cartVertCount);
+  }
+
+  // Draw Target Block Outline
+  if (!ridingCart) {
+    const tgt = raycastTarget();
+    if (tgt && tgt.type === 'block') {
+      gl.bindVertexArray(hlVao);
+      gl.uniform3f(uOffsetLoc, tgt.bx, tgt.by, tgt.bz);
+      gl.drawArrays(gl.LINES, 0, 24);
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
