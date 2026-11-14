@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v10 - Hard Mode</title>
-<link rel="icon" href="minecraft.png">
+<title>MinecraftZ v11 - Worlds &amp; Multiplayer</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
   body { overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -100,26 +99,71 @@
   .recipe .btn { padding: 3px 12px; font-size: 13px; margin: 0; }
   #cursorItem { position: fixed; width: 30px; height: 30px; pointer-events: none; z-index: 30; display: none; image-rendering: pixelated; }
   #clock { color: #ffd166; }
+  #mainMenu, #createPanel {
+    display: none; position: fixed; inset: 0; z-index: 15; color: #fff; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, #1d2b3a 0%, #2c4a2a 100%); overflow: auto;
+  }
+  body:not(.ingame) #hud, body:not(.ingame) #crosshair, body:not(.ingame) #hotbar,
+  body:not(.ingame) #hearts, body:not(.ingame) #prompt, body:not(.ingame) #mineBar, body:not(.ingame) #tags { display: none !important; }
+  .row input[type=text] { width: 190px; background: #444; color: #fff; border: 1px solid #888; padding: 5px 7px; border-radius: 4px; font-family: inherit; }
+  .hint { font-size: 12px; color: #aaa; margin: 4px 0 8px; line-height: 1.4; }
+  .worldrow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 5px 0; background: #383838; border-radius: 6px; }
+  .worldrow .winfo { flex: 1; min-width: 0; }
+  .worldrow .winfo b { display: block; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .worldrow .winfo span { font-size: 12px; color: #aaa; }
+  .worldrow .btn { padding: 4px 11px; font-size: 13px; margin: 0; }
+  #worldList { max-height: 38vh; overflow: auto; }
+  #pauseSeed { color: #ffd166; cursor: pointer; text-decoration: underline dotted; }
+  #tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+  .tag { position: absolute; left: 0; top: 0; color: #fff; font-size: 13px; font-weight: bold; padding: 1px 6px; background: rgba(0,0,0,0.55); border-radius: 4px; white-space: nowrap; text-shadow: 1px 1px 0 #000; }
+  #toasts { position: fixed; left: 12px; bottom: 100px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; z-index: 6; }
+  #toasts div { background: rgba(0,0,0,0.65); color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px; }
+  #mpLine { color: #8fd68f; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
 <div id="overlay">
-  <h1>MinecraftZ</h1>
-  <div><button class="btn primary" id="playBtn">Play</button><button class="btn" id="settingsBtn">Settings</button></div>
+  <h1 id="pauseTitle">World</h1>
+  <div id="pauseInfo" style="color:#ccc;font-size:14px;margin-bottom:8px;line-height:1.6"></div>
+  <div><button class="btn primary" id="resumeBtn">Resume</button><button class="btn" id="settingsBtn">Settings</button><button class="btn" id="quitBtn">Save &amp; Quit</button></div>
   <p>
   <b>WASD</b> Move | <b>Space</b> Jump / Climb Up | <b>Shift</b> Climb Down<br>
   <b>Right-Click</b> / <b>E</b> Place Block, Ride Minecart, Equip Armor<br>
   <b>Left-Click</b> (hold in Survival) / <b>Q</b> Break Block or Attack<br>
   <b>C</b> or <b>I</b> Inventory &amp; Crafting | <b>1-9</b> / Wheel Hotbar<br>
-  <b>F</b> Dismount Minecart | <b>N</b> Noclip (Creative) | <b>R</b> New World (Creative)</p>
+  <b>F</b> Dismount Minecart | <b>N</b> Noclip (Creative)</p>
+</div>
+<div id="mainMenu">
+  <div class="panel" style="width:min(94vw,580px)">
+    <h1 style="color:#ffd166;font-size:36px;margin-bottom:6px">MinecraftZ</h1>
+    <div class="row"><span>Your name</span><input type="text" id="mmName" maxlength="16"></div>
+    <div class="row"><span>Go online (join others in the same seed)</span><input type="checkbox" id="mmOnline"></div>
+    <h2 style="margin-top:12px">Worlds</h2>
+    <div id="worldList"></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="mmNew">Create / Join World</button><button class="btn" id="mmSettings">Settings</button></div>
+  </div>
+</div>
+<div id="createPanel">
+  <div class="panel" style="width:min(94vw,500px)">
+    <h2>Create or Join a World</h2>
+    <div class="row"><span>World name</span><input type="text" id="cName" maxlength="32" value="New World"></div>
+    <div class="row"><span>Seed</span><input type="text" id="cSeed" maxlength="40" placeholder="blank = random"></div>
+    <div class="hint">Enter a friend's seed to go to their world. If they are online in that seed, you join them automatically and their mode and rules apply.</div>
+    <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="survival">Survival</option></select></div>
+    <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="cPlay">Play</button><button class="btn" id="cCancel">Cancel</button></div>
+  </div>
 </div>
 <div id="settings">
   <div class="panel">
     <h2>Settings</h2>
-    <div class="row"><span>Game Mode</span><select id="sMode"><option value="creative">Creative</option><option value="survival">Survival</option></select></div>
-    <div style="font-size:12px;color:#aaa;margin:-4px 0 6px">Creative and Survival each keep their own world. Switching never mixes them.</div>
+    <div class="row"><span>Player Name</span><input type="text" id="sName" maxlength="16"></div>
+    <div class="row"><span>Mode</span><span id="sModeText" style="color:#ffd166"></span></div>
+    <div class="hint">Mode is chosen when a world is created. In someone else's world, the host's mode applies.</div>
+    <div class="row"><span>Multiplayer (join others in the same seed)</span><input type="checkbox" id="sOnline"></div>
     <div class="row"><span>Difficulty</span><select id="sDiff"><option value="peaceful">Peaceful</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
-    <div style="font-size:12px;color:#aaa;margin:-4px 0 6px">Normal: each death lowers your max hearts (4, then 2, then 1), then you die for real and start over. Hard: one death erases everything.</div>
+    <div class="hint">Normal: each death lowers your max hearts (4, then 2, then 1), then you die for real and start over. Hard: one death erases everything. In a shared world, a reset only clears your own inventory and health.</div>
     <div class="row" id="rowMobs"><span>Mobs (Survival)</span><input type="checkbox" id="sMobs"></div>
     <div class="row"><span>Day Length</span><input type="range" id="sDay" min="2" max="20" step="1"><span class="val" id="vDay"></span></div>
     <div class="row"><span>Render Distance</span><input type="range" id="sRender" min="2" max="8" step="1"><span class="val" id="vRender"></span></div>
@@ -127,7 +171,7 @@
     <div class="row"><span>Mouse Sensitivity</span><input type="range" id="sSens" min="20" max="250" step="5"><span class="val" id="vSens"></span></div>
     <div class="row"><span>Fog</span><input type="checkbox" id="sFog"></div>
     <div class="row"><span>Show Info HUD</span><input type="checkbox" id="sHud"></div>
-    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="settingsBack">Done</button><button class="btn" id="settingsNew">Apply &amp; New World</button></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="settingsBack">Done</button></div>
   </div>
 </div>
 <div id="invScreen">
@@ -141,6 +185,8 @@
 </div>
 <img id="cursorItem" alt="">
 <div id="hearts"></div>
+<div id="tags"></div>
+<div id="toasts"></div>
 <div id="mineBar"><div></div></div>
 <div id="flash"></div>
 <div id="death"><div id="deathTitle">You Died</div><div id="deathMsg" style="font-size:16px;margin-top:8px;max-width:520px;text-align:center">Respawning...</div></div>
@@ -148,6 +194,7 @@
   <div><b>FPS:</b> <span id="fps">60</span> | <b>Pos:</b> <span id="pos">0, 0, 0</span></div>
   <div><b>Mode:</b> <span id="mode">Walking</span> | <b>Seed:</b> <span id="seed">0</span></div>
   <div id="clock"></div>
+  <div id="mpLine"></div>
   <div><b>Controls:</b> [E / Right-Click] Place or Ride Cart | [Left-Click] Break | [F] Exit Cart | [N] Noclip</div>
 </div>
 <div id="crosshair"></div>
@@ -168,7 +215,8 @@ const TILE = {
   LADDER_ICON: 16, TRACK_ICON: 17, CART_ICON: 18,
   STICK_ICON: 19, SWORD_ICON: 20, HELMET_ICON: 21, CHEST_ICON: 22, PICK_ICON: 23,
   Z_SKIN: 24, Z_SHIRT: 25, Z_PANTS: 26, Z_FACE: 27,
-  TORCH_SIDE: 28, TORCH_TOP: 29, TORCH_ICON: 30, AXE_ICON: 31, SAND: 32, CACTUS_SIDE: 33, CACTUS_TOP: 34
+  TORCH_SIDE: 28, TORCH_TOP: 29, TORCH_ICON: 30, AXE_ICON: 31, SAND: 32, CACTUS_SIDE: 33, CACTUS_TOP: 34,
+  P_SKIN: 35, P_SHIRT: 36, P_PANTS: 37, P_FACE: 38
 };
 
 const atlasCanvas = document.createElement('canvas');
@@ -369,6 +417,19 @@ atlasCanvas.height = ROWS * T;
     return [78 + n, 142 + n, 70 + n];
   });
 
+  // ---- v11 player skin ----
+  paint(TILE.P_SKIN, () => { const n = jit(6); return [224 + n, 172 + n, 132 + n]; });
+  paint(TILE.P_SHIRT, () => { const n = jit(6); return [64 + n, 150 + n, 215 + n]; });
+  paint(TILE.P_PANTS, () => { const n = jit(6); return [58 + n, 62 + n, 150 + n]; });
+  paint(TILE.P_FACE, (x, y) => {
+    const n = jit(5);
+    if (y <= 3) return [88 + n, 58 + n, 36 + n];                                      // hair
+    if (y >= 6 && y <= 7 && ((x >= 4 && x <= 5) || (x >= 10 && x <= 11))) return [60, 70, 170];
+    if (y >= 6 && y <= 7 && ((x >= 3 && x <= 5) || (x >= 10 && x <= 12))) return [255, 255, 255];
+    if (y === 11 && x >= 6 && x <= 9) return [150, 90, 80];
+    return [224 + n, 172 + n, 132 + n];
+  });
+
   // ---- v9 tiles ----
   paint(TILE.SAND, (x, y) => {
     const n = jit(7), s = rnd() < 0.07 ? -16 : 0;
@@ -465,8 +526,9 @@ function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[
 
 // ---------- Settings ----------
 const SETTINGS_KEY = 'minecraftz_settings_v7';
-const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true };
+const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true, name: '', online: true };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
+if (!settings.name) settings.name = 'Player' + (1000 + Math.floor(Math.random() * 9000));
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 const isSurvival = () => settings.mode === 'survival';
 
@@ -779,6 +841,7 @@ function setBlock(wx, wy, wz, id) {
   if (lx === CHUNK_SIZE - 1) markChunkDirty(cx + 1, cz);
   if (lz === 0) markChunkDirty(cx, cz - 1);
   if (lz === CHUNK_SIZE - 1) markChunkDirty(cx, cz + 1);
+  if (!mpApplying && MP.role !== 'none') mpSendBlock(wx, wy, wz, id);
 }
 
 function markChunkDirty(cx, cz) {
@@ -1034,6 +1097,7 @@ player.y = terrainHeight(8, 8) + 3;
 // ---------- Shared game state ----------
 const mobs = [];
 const drops = [];
+let netDayLen = null;   // in a shared world the host's day length applies to everyone
 let worldTime = 0.08;   // fraction of a day, 0.25 = noon, 0.75 = midnight
 let dayCount = 1;
 let deadTimer = 0;
@@ -1047,53 +1111,57 @@ function clearChunks() {
   buildQueue.length = 0;
 }
 
+let inGame = false;
+let currentWorld = null;
+let guestSession = false;   // true once we adopted someone else's world: nothing is saved over our own copy
+const isShared = () => guestSession || (MP.role === 'host' && MP.conns.size > 0);
+
+function rebuildTorches() {
+  torches.clear();
+  for (const [k, m] of edits) {
+    const parts = k.split(',').map(Number);
+    for (const [i, id] of m) {
+      if (id !== 11) continue;
+      const x = parts[0] * CHUNK_SIZE + (i % CHUNK_SIZE), z = parts[1] * CHUNK_SIZE + (Math.floor(i / CHUNK_SIZE) % CHUNK_SIZE), y = Math.floor(i / (CHUNK_SIZE * CHUNK_SIZE));
+      torches.set(x + ',' + y + ',' + z, [x, y, z]);
+    }
+  }
+}
+
+// Reset after a final death. In a shared world only the player's own state resets.
 function newWorld() {
   if (ridingCart) dismountCart();
-  clearChunks();
-  minecarts.length = 0;
   mobs.length = 0;
   drops.length = 0;
-  worldSeed = Math.floor(Math.random() * 100000);
-  document.getElementById('seed').textContent = worldSeed;
-  for (let cx = -2; cx <= 2; cx++) {
-    for (let cz = -2; cz <= 2; cz++) getChunk(cx, cz, true);
+  const shared = isShared();
+  if (!shared) {
+    clearChunks();
+    minecarts.length = 0;
+    edits.clear();
+    torches.clear();
+    worldTime = 0.08; dayCount = 1;
   }
   player.x = 8.5; player.z = 8.5;
   player.y = terrainHeight(8, 8) + 3;
   player.vx = player.vy = player.vz = 0;
-  pendingReset = false; maxHp = 20; deaths = 0; hp = 20;
-  worldTime = 0.08; dayCount = 1; deadTimer = 0;
+  pendingReset = false; maxHp = 20; deaths = 0; hp = 20; deadTimer = 0;
   if (isSurvival()) {
     for (let i = 0; i < 36; i++) inv[i] = emptySlot();
     armor.head = 0; armor.chest = 0;
     selectedSlot = 0;
   }
-  edits.clear();
-  torches.clear();
   document.getElementById('death').style.display = 'none';
+  if (!shared) pregenAround(8.5, 8.5);
   renderHotbar();
   saveWorld();
-}
-
-function setMode(m) {
-  if (m === settings.mode) { syncSettingsUI(); return; }
-  if (ridingCart) dismountCart();
-  saveWorld();                         // keep the world we are leaving
-  settings.mode = m;
-  player.noclip = false;
-  deadTimer = 0; pendingReset = false;
-  document.getElementById('death').style.display = 'none';
-  if (!loadWorld()) newWorld();        // each mode has its own world; a first visit starts fresh
-  document.getElementById('mode').textContent = 'Walking';
-  selectedSlot = Math.min(selectedSlot, 8);
-  applySettings();
-  syncSettingsUI();
 }
 
 // ---------- Settings screen ----------
 const $ = (id) => document.getElementById(id);
 function syncSettingsUI() {
-  $('sMode').value = settings.mode;
+  $('sName').value = settings.name; $('mmName').value = settings.name;
+  $('sOnline').checked = settings.online; $('mmOnline').checked = settings.online;
+  $('sModeText').textContent = inGame ? (isSurvival() ? 'Survival' : 'Creative') : 'Set when you create a world';
   $('sDiff').value = settings.difficulty;
   $('sMobs').checked = settings.mobs;
   $('sDay').value = settings.dayLen;   $('vDay').textContent = settings.dayLen + ' min';
@@ -1111,8 +1179,11 @@ function applySettings() {
   renderHotbar();
   saveSettings();
 }
-$('sMode').onchange = (e) => setMode(e.target.value);
-$('sDiff').onchange = (e) => { settings.difficulty = e.target.value; applySettings(); syncSettingsUI(); };
+$('sDiff').onchange = (e) => {
+  settings.difficulty = e.target.value;
+  if (currentWorld && inGame && !guestSession) { currentWorld.difficulty = settings.difficulty; saveWorldList(); }
+  applySettings(); syncSettingsUI();
+};
 $('sMobs').onchange = (e) => { settings.mobs = e.target.checked; applySettings(); };
 $('sDay').oninput = (e) => { settings.dayLen = +e.target.value; applySettings(); syncSettingsUI(); };
 $('sRender').oninput = (e) => { settings.renderDist = +e.target.value; applySettings(); syncSettingsUI(); };
@@ -1120,10 +1191,18 @@ $('sFov').oninput = (e) => { settings.fov = +e.target.value; applySettings(); sy
 $('sSens').oninput = (e) => { settings.sens = +e.target.value; applySettings(); syncSettingsUI(); };
 $('sFog').onchange = (e) => { settings.fog = e.target.checked; applySettings(); };
 $('sHud').onchange = (e) => { settings.hud = e.target.checked; applySettings(); };
+$('sName').oninput = (e) => { settings.name = e.target.value.slice(0, 16); $('mmName').value = settings.name; saveSettings(); };
+$('mmName').oninput = (e) => { settings.name = e.target.value.slice(0, 16); $('sName').value = settings.name; saveSettings(); };
+function onlineChanged(v) {
+  settings.online = v; $('sOnline').checked = v; $('mmOnline').checked = v; saveSettings();
+  if (inGame) { if (v) mpStart(); else mpStop(); }
+}
+$('sOnline').onchange = (e) => onlineChanged(e.target.checked);
+$('mmOnline').onchange = (e) => onlineChanged(e.target.checked);
 syncSettingsUI();
 
 // ---------- Screen management ----------
-let screen = null;      // null | 'settings' | 'inv'
+let screen = null;      // null | 'create' | 'settings' | 'inv'
 let locked = false;
 const overlay = $('overlay');
 const invScreen = $('invScreen');
@@ -1134,10 +1213,14 @@ const cursorImg = $('cursorItem');
 let cursor = { id: 0, count: 0 };
 
 function refreshUI() {
-  overlay.style.display = (!locked && screen === null) ? 'flex' : 'none';
+  document.body.classList.toggle('ingame', inGame);
+  overlay.style.display = (inGame && !locked && screen === null) ? 'flex' : 'none';
+  $('mainMenu').style.display = (!inGame && screen === null) ? 'flex' : 'none';
+  $('createPanel').style.display = (!inGame && screen === 'create') ? 'flex' : 'none';
   $('settings').style.display = screen === 'settings' ? 'flex' : 'none';
   invScreen.style.display = screen === 'inv' ? 'flex' : 'none';
   if (screen !== 'inv') cursorImg.style.display = 'none';
+  if (inGame && !locked && screen === null) updatePauseInfo();
 }
 function openScreen(name) {
   screen = name;
@@ -1157,11 +1240,15 @@ function closeScreen() {
   renderHotbar();
   if (wasInv) canvas.requestPointerLock();
 }
-$('playBtn').onclick = (e) => { e.stopPropagation(); canvas.requestPointerLock(); };
+$('resumeBtn').onclick = (e) => { e.stopPropagation(); canvas.requestPointerLock(); };
 $('settingsBtn').onclick = (e) => { e.stopPropagation(); openScreen('settings'); };
+$('quitBtn').onclick = (e) => { e.stopPropagation(); quitToMenu(); };
 $('settingsBack').onclick = () => closeScreen();
-$('settingsNew').onclick = () => { newWorld(); closeScreen(); };
 $('invClose').onclick = () => closeScreen();
+$('mmSettings').onclick = () => openScreen('settings');
+$('mmNew').onclick = () => { $('cName').value = 'New World'; $('cSeed').value = ''; openScreen('create'); };
+$('cCancel').onclick = () => closeScreen();
+$('cPlay').onclick = () => createAndPlay();
 
 // ---------- Crafting ----------
 // cost keys are item ids: 4 Wood, 5 Planks, 20 Stick, 6 Stone, 2 Dirt, 10 Leaves
@@ -1303,12 +1390,56 @@ invScreen.addEventListener('click', updateCursorImg);
 
 applySettings();
 
-// ---------- Saving & loading ----------
-const worldKey = () => 'minecraftz_world_v10_' + settings.mode;   // one world per mode
+// ---------- Worlds, saving & loading ----------
+const WORLDS_KEY = 'minecraftz_worlds_v11';
+let worlds = [];
 let saveFailed = false;
+const newId = () => Math.random().toString(36).slice(2, 10);
+const saveKeyFor = (w) => 'minecraftz_w11_' + w.id;
+const worldKey = () => currentWorld ? saveKeyFor(currentWorld) : null;
+
+function loadWorldList() {
+  try {
+    worlds = JSON.parse(localStorage.getItem(WORLDS_KEY) || '[]');
+    if (!Array.isArray(worlds)) worlds = [];
+  } catch (e) { worlds = []; }
+}
+function saveWorldList() {
+  try { localStorage.setItem(WORLDS_KEY, JSON.stringify(worlds)); } catch (e) {}
+}
+
+// Numbers are used as typed; any other text is hashed, so the same words always give the same world.
+function parseSeed(text) {
+  text = (text || '').trim();
+  if (!text) { const n = 1 + Math.floor(Math.random() * 999999999); return { seed: n, text: String(n) }; }
+  if (/^-?\d+$/.test(text) && Math.abs(Number(text)) < 2e9) return { seed: Math.abs(parseInt(text, 10)), text };
+  let h = 2166136261;
+  for (const c of text) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return { seed: (h >>> 0) % 2000000000, text };
+}
+
+// Bring worlds saved by v8-v10 into the new world list
+function migrateOldWorlds() {
+  let have = null;
+  try { have = localStorage.getItem(WORLDS_KEY); } catch (e) { return; }
+  if (have !== null) return;
+  for (const [mode, name] of [['creative', 'Old Creative World'], ['survival', 'Old Survival World']]) {
+    let raw = null;
+    try {
+      raw = localStorage.getItem('minecraftz_world_v10_' + mode);
+      if (!raw && mode === 'creative') raw = localStorage.getItem('minecraftz_world_v8');
+      if (!raw) continue;
+      const d = JSON.parse(raw);
+      const w = { id: newId(), name, seed: d.seed, seedText: String(d.seed), mode, difficulty: settings.difficulty || 'normal', created: Date.now(), played: Date.now() };
+      worlds.push(w);
+      localStorage.setItem(saveKeyFor(w), raw);
+    } catch (e) {}
+  }
+  saveWorldList();
+}
 
 function saveWorld() {
-  if (pendingReset) return;
+  if (!inGame || !currentWorld || guestSession || pendingReset) return;
   try {
     const e = {};
     for (const [k, m] of edits) {
@@ -1328,6 +1459,8 @@ function saveWorld() {
       selectedSlot
     };
     localStorage.setItem(worldKey(), JSON.stringify(data));
+    currentWorld.played = Date.now();
+    saveWorldList();
     worldDirty = false;
     saveFailed = false;
   } catch (err) {
@@ -1341,30 +1474,20 @@ function pregenAround(px, pz) {
     for (let cz = pcz - 2; cz <= pcz + 2; cz++) getChunk(cx, cz, true);
   }
 }
+function ITEMS_OK(id) { return !!id && !!itemInfo(id); }
 
-function loadWorld() {
+// Restores a saved world into the game state. Returns false when there is no usable save.
+function loadSaveInto(entry) {
   try {
-    let raw = localStorage.getItem(worldKey());
-    if (!raw && settings.mode === 'creative') raw = localStorage.getItem('minecraftz_world_v8');   // worlds saved by v8/v9
-    const d = JSON.parse(raw || 'null');
+    const d = JSON.parse(localStorage.getItem(saveKeyFor(entry)) || 'null');
     if (!d || d.v !== 1 || !d.player) return false;
-    worldSeed = d.seed;
-    document.getElementById('seed').textContent = worldSeed;
     edits.clear();
     for (const k in d.edits) {
       const a = d.edits[k], m = new Map();
       for (let i = 0; i + 1 < a.length; i += 2) m.set(a[i], a[i + 1]);
       edits.set(k, m);
     }
-    torches.clear();
-    for (const [k, m] of edits) {
-      const parts = k.split(',').map(Number);
-      for (const [i, id] of m) {
-        if (id !== 11) continue;
-        const x = parts[0] * CHUNK_SIZE + (i % CHUNK_SIZE), z = parts[1] * CHUNK_SIZE + (Math.floor(i / CHUNK_SIZE) % CHUNK_SIZE), y = Math.floor(i / (CHUNK_SIZE * CHUNK_SIZE));
-        torches.set(x + ',' + y + ',' + z, [x, y, z]);
-      }
-    }
+    rebuildTorches();
     Object.assign(player, { x: d.player.x, y: d.player.y, z: d.player.z, yaw: d.player.yaw || 0, pitch: d.player.pitch || 0 });
     player.vx = player.vy = player.vz = 0;
     maxHp = Math.max(2, Math.min(20, d.maxHp || 20));
@@ -1372,30 +1495,497 @@ function loadWorld() {
     hp = Math.max(1, Math.min(maxHp, d.hp || maxHp));
     worldTime = d.worldTime || 0.08;
     dayCount = d.dayCount || 1;
-    for (let i = 0; i < 36; i++) inv[i] = emptySlot();
-    mobs.length = 0; drops.length = 0;
     (d.inv || []).forEach((p, i) => { if (i < 36 && p[0] && ITEMS_OK(p[0])) inv[i] = { id: p[0], count: p[1] }; });
     for (const k of ['head', 'chest']) armor[k] = ITEMS_OK(d.armor && d.armor[k]) ? d.armor[k] : 0;
     (d.creativeBar || []).forEach((id, i) => { if (i < 9 && ITEMS_OK(id)) creativeBar[i] = { id, count: 1 }; });
-    minecarts.length = 0;
     (d.carts || []).forEach(c => minecarts.push({ x: c[0], y: c[1], z: c[2], vx: 0, vy: 0, vz: 0 }));
     selectedSlot = Math.min(8, d.selectedSlot || 0);
-    // Drop the chunks generated for the default spawn and rebuild around the saved position
-    clearChunks();
-    pregenAround(player.x, player.z);
-    renderHotbar();
     return true;
   } catch (err) {
     return false;
   }
 }
-function ITEMS_OK(id) { return !!id && !!itemInfo(id); }
 
-loadWorld();
+function startWorld(entry) {
+  if (inGame) return;
+  currentWorld = entry;
+  guestSession = false;
+  settings.mode = entry.mode;
+  settings.difficulty = entry.difficulty || 'normal';
+  worldSeed = entry.seed;
+  $('seed').textContent = entry.seedText || entry.seed;
+  // clean slate, then restore the save if there is one
+  clearChunks();
+  minecarts.length = 0; mobs.length = 0; drops.length = 0;
+  edits.clear(); torches.clear();
+  ridingCart = null;
+  player.noclip = false; player.yaw = 0; player.pitch = -0.2;
+  pendingReset = false; deadTimer = 0;
+  $('death').style.display = 'none';
+  maxHp = 20; deaths = 0; hp = 20; worldTime = 0.08; dayCount = 1;
+  for (let i = 0; i < 36; i++) inv[i] = emptySlot();
+  armor.head = 0; armor.chest = 0; selectedSlot = 0;
+  for (let i = 0; i < 9; i++) creativeBar[i] = { id: i + 1, count: 1 };
+  player.x = 8.5; player.z = 8.5; player.y = terrainHeight(8, 8) + 3;
+  player.vx = player.vy = player.vz = 0;
+  loadSaveInto(entry);
+  clearChunks();
+  pregenAround(player.x, player.z);
+  document.getElementById('mode').textContent = 'Walking';
+  inGame = true;
+  screen = null;
+  syncSettingsUI();
+  applySettings();
+  renderHotbar();
+  refreshUI();
+  mpStart();
+  saveWorld();
+}
+
+function quitToMenu() {
+  saveWorld();
+  mpStop();
+  inGame = false; screen = null; currentWorld = null; guestSession = false;
+  mobs.length = 0; drops.length = 0; minecarts.length = 0; ridingCart = null;
+  deadTimer = 0;
+  $('death').style.display = 'none';
+  if (document.pointerLockElement) document.exitPointerLock();
+  locked = false;
+  renderWorldList();
+  syncSettingsUI();
+  refreshUI();
+}
+
+function createAndPlay() {
+  const name = ($('cName').value.trim() || 'New World').slice(0, 32);
+  const ps = parseSeed($('cSeed').value);
+  const entry = { id: newId(), name, seed: ps.seed, seedText: ps.text, mode: $('cMode').value, difficulty: $('cDiff').value, created: Date.now(), played: Date.now() };
+  worlds.push(entry);
+  saveWorldList();
+  screen = null;
+  startWorld(entry);
+  canvas.requestPointerLock();
+}
+
+function timeAgo(t) {
+  const m = Math.floor((Date.now() - t) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + ' min ago';
+  if (m < 1440) return Math.floor(m / 60) + ' h ago';
+  return Math.floor(m / 1440) + ' d ago';
+}
+
+function renderWorldList() {
+  const el = $('worldList');
+  el.textContent = '';
+  if (!worlds.length) {
+    const h = document.createElement('div');
+    h.className = 'hint';
+    h.textContent = "No worlds yet. Create one below, or enter a friend's seed to go to their world.";
+    el.appendChild(h);
+    return;
+  }
+  worlds.slice().sort((a, b) => b.played - a.played).forEach((w) => {
+    const row = document.createElement('div');
+    row.className = 'worldrow';
+    const info = document.createElement('div');
+    info.className = 'winfo';
+    const b = document.createElement('b');
+    b.textContent = w.name;
+    const sp = document.createElement('span');
+    sp.textContent = `Seed ${w.seedText || w.seed} · ${w.mode === 'survival' ? 'Survival' : 'Creative'} · ${w.difficulty} · ${timeAgo(w.played)}`;
+    info.append(b, sp);
+    const mk = (label, fn, cls) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn' + (cls ? ' ' + cls : '');
+      btn.textContent = label;
+      btn.onclick = fn;
+      return btn;
+    };
+    row.append(info,
+      mk('Play', () => { startWorld(w); canvas.requestPointerLock(); }, 'primary'),
+      mk('Rename', () => {
+        const n = prompt('Rename world', w.name);
+        if (n && n.trim()) { w.name = n.trim().slice(0, 32); saveWorldList(); renderWorldList(); }
+      }),
+      mk('Delete', () => {
+        if (!confirm(`Delete "${w.name}" for good? This erases its builds and inventory.`)) return;
+        worlds = worlds.filter(x => x !== w);
+        try { localStorage.removeItem(saveKeyFor(w)); } catch (e) {}
+        saveWorldList();
+        renderWorldList();
+      }));
+    el.appendChild(row);
+  });
+}
+
+function updatePauseInfo() {
+  if (!currentWorld) return;
+  $('pauseTitle').textContent = currentWorld.name;
+  const seedTxt = currentWorld.seedText || String(currentWorld.seed);
+  const info = $('pauseInfo');
+  info.textContent = '';
+  const l1 = document.createElement('div');
+  const sp = document.createElement('span');
+  sp.id = 'pauseSeed';
+  sp.textContent = seedTxt;
+  sp.title = 'Click to copy the seed';
+  sp.onclick = (e) => {
+    e.stopPropagation();
+    try { navigator.clipboard.writeText(seedTxt); mpToast('Seed copied'); } catch (err) {}
+  };
+  l1.append('Seed: ', sp, ` | ${isSurvival() ? 'Survival' : 'Creative'} | ${settings.difficulty}`);
+  const l2 = document.createElement('div');
+  l2.textContent = mpSummary();
+  info.append(l1, l2);
+}
+
+function initMenu() {
+  loadWorldList();
+  migrateOldWorlds();
+  loadWorldList();
+  renderWorldList();
+  refreshUI();
+}
+
 setInterval(saveWorld, 8000);
 window.addEventListener('pagehide', saveWorld);
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveWorld(); });
 document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== canvas) saveWorld(); });
+
+// ---------- Multiplayer (seed rooms over WebRTC, matchmaking by PeerJS) ----------
+// The first player in a seed claims the room id and hosts; everyone else with that seed connects to them.
+const MP_VER = 1;
+const MP = { peer: null, role: 'none', conns: new Map(), hostConn: null, myId: null, players: new Map(),
+             status: 'Offline', timer: null, retry: null, gen: 0, pending: null };
+const mpRoomId = () => 'minecraftz' + MP_VER + '-' + worldSeed;
+let mpApplying = false;
+const num = (v) => (Number.isFinite(+v) ? +v : 0);
+const myName = () => (settings.name || 'Player').slice(0, 16);
+
+function mpToast(msg) {
+  const d = document.createElement('div');
+  d.textContent = msg;
+  document.getElementById('toasts').appendChild(d);
+  setTimeout(() => d.remove(), 4000);
+}
+
+function mpSummary() {
+  const n = MP.players.size;
+  if (MP.role === 'host') {
+    return n ? `Online: hosting with ${[...MP.players.values()].map(p => p.name).join(', ')}` : 'Online: hosting (friends who enter this seed will join you)';
+  }
+  if (MP.role === 'client') return `Online: in a shared world with ${[...MP.players.values()].map(p => p.name).join(', ')}`;
+  return 'Online: ' + MP.status;
+}
+
+function mpStart() {
+  mpStop();
+  if (!settings.online) { MP.status = 'off (turn it on in Settings)'; return; }
+  if (typeof Peer === 'undefined') { MP.status = 'unavailable (could not load the multiplayer library)'; return; }
+  mpTryHost(++MP.gen);
+}
+
+function mpStop() {
+  MP.gen++;
+  clearTimeout(MP.retry);
+  clearInterval(MP.timer);
+  try { if (MP.hostConn) MP.hostConn.close(); } catch (e) {}
+  for (const c of MP.conns.values()) { try { c.close(); } catch (e) {} }
+  try { if (MP.peer) MP.peer.destroy(); } catch (e) {}
+  MP.peer = null; MP.role = 'none'; MP.hostConn = null; MP.myId = null; MP.pending = null;
+  MP.conns.clear(); MP.players.clear();
+  MP.status = 'Offline';
+  netDayLen = null;
+  mpClearTags();
+}
+
+function mpRestart(gen, delay) {
+  if (gen !== MP.gen) return;
+  clearTimeout(MP.retry);
+  clearInterval(MP.timer);
+  const g = ++MP.gen;
+  try { if (MP.peer) MP.peer.destroy(); } catch (e) {}
+  MP.peer = null; MP.hostConn = null; MP.role = 'none'; MP.pending = null;
+  MP.conns.clear(); MP.players.clear();
+  mpClearTags();
+  MP.retry = setTimeout(() => { if (g === MP.gen) mpTryHost(g); }, delay + Math.random() * 700);
+}
+
+function mpTryHost(gen) {
+  MP.status = 'connecting...';
+  let peer;
+  try { peer = new Peer(mpRoomId(), { debug: 0 }); } catch (e) { MP.status = 'unavailable'; return; }
+  MP.peer = peer;
+  let claimed = false;
+  peer.on('open', (id) => {
+    if (gen !== MP.gen) { try { peer.destroy(); } catch (e) {} return; }
+    claimed = true;
+    MP.role = 'host'; MP.myId = id; MP.status = 'hosting';
+    if (netDayLen) { settings.dayLen = netDayLen; netDayLen = null; syncSettingsUI(); }
+    clearInterval(MP.timer);
+    MP.timer = setInterval(mpHostTick, 100);
+  });
+  peer.on('connection', (conn) => { if (gen === MP.gen) mpHostAccept(conn); });
+  peer.on('error', (err) => {
+    if (gen !== MP.gen) return;
+    if (err.type === 'unavailable-id' && !claimed) {
+      try { peer.destroy(); } catch (e) {}
+      MP.peer = null;
+      mpJoinClient(gen);
+    } else if (!claimed) {
+      MP.status = 'unavailable (' + err.type + ')';
+      clearTimeout(MP.retry);
+      MP.retry = setTimeout(() => { if (gen === MP.gen) mpRestart(gen, 0); }, 30000);
+    }
+  });
+  peer.on('disconnected', () => { if (gen === MP.gen && claimed) { try { peer.reconnect(); } catch (e) {} } });
+}
+
+function mpJoinClient(gen) {
+  MP.status = 'joining...';
+  let peer;
+  try { peer = new Peer({ debug: 0 }); } catch (e) { MP.status = 'unavailable'; return; }
+  MP.peer = peer;
+  let opened = false;
+  peer.on('open', (id) => {
+    if (gen !== MP.gen) { try { peer.destroy(); } catch (e) {} return; }
+    MP.myId = id;
+    const conn = peer.connect(mpRoomId(), { serialization: 'json', reliable: true });
+    MP.hostConn = conn;
+    const giveUp = setTimeout(() => { if (!opened && gen === MP.gen) mpRestart(gen, 400); }, 9000);
+    conn.on('open', () => {
+      opened = true;
+      clearTimeout(giveUp);
+      conn.send({ t: 'hello', name: myName(), ver: MP_VER });
+    });
+    conn.on('data', (m) => { if (gen === MP.gen) mpClientMsg(m); });
+    conn.on('close', () => { if (gen === MP.gen) { MP.status = 'host left, reconnecting...'; mpToast('The host left. Reconnecting...'); mpRestart(gen, 300); } });
+    conn.on('error', () => {});
+  });
+  peer.on('error', (err) => {
+    if (gen !== MP.gen) return;
+    if (err.type === 'peer-unavailable') mpRestart(gen, 800);        // the host vanished: try to take over the room
+    else {
+      MP.status = 'unavailable (' + err.type + ')';
+      clearTimeout(MP.retry);
+      MP.retry = setTimeout(() => { if (gen === MP.gen) mpRestart(gen, 0); }, 30000);
+    }
+  });
+}
+
+// ----- host side -----
+function mpHostAccept(conn) {
+  conn.on('data', (m) => mpHostMsg(conn, m));
+  conn.on('close', () => mpHostDrop(conn));
+  conn.on('error', () => {});
+}
+
+function mpHostDrop(conn) {
+  if (MP.conns.get(conn.peer) !== conn) return;
+  MP.conns.delete(conn.peer);
+  const p = MP.players.get(conn.peer);
+  MP.players.delete(conn.peer);
+  if (p) mpToast(p.name + ' left');
+}
+
+function mpHostMsg(conn, m) {
+  if (!m || typeof m !== 'object') return;
+  if (m.t === 'hello') {
+    if (m.ver !== MP_VER) { conn.send({ t: 'reject', why: 'Different game version' }); setTimeout(() => conn.close(), 300); return; }
+    if (MP.conns.size >= 7) { conn.send({ t: 'reject', why: 'This world is full (8 players)' }); setTimeout(() => conn.close(), 300); return; }
+    const name = String(m.name || 'Player').slice(0, 16);
+    MP.conns.set(conn.peer, conn);
+    MP.players.set(conn.peer, { id: conn.peer, name, x: player.x, y: player.y, z: player.z, yaw: 0, pitch: 0 });
+    conn.send({ t: 'welcome', seed: worldSeed, seedText: currentWorld ? currentWorld.seedText : String(worldSeed),
+               mode: settings.mode, difficulty: settings.difficulty, wt: worldTime, day: dayCount, dl: settings.dayLen,
+               host: { name: myName(), x: player.x, y: player.y, z: player.z } });
+    for (const [k, mm] of edits) {
+      const a = [];
+      for (const [i, id] of mm) a.push(i, id);
+      conn.send({ t: 'edits', k, a });
+    }
+    conn.send({ t: 'ready' });
+    mpToast(name + ' joined');
+  } else if (m.t === 'pos') {
+    const p = MP.players.get(conn.peer);
+    if (p) { p.x = num(m.x); p.y = num(m.y); p.z = num(m.z); p.yaw = num(m.yaw); p.pitch = num(m.pitch); }
+  } else if (m.t === 'block') {
+    if (!MP.conns.has(conn.peer)) return;
+    mpApplyBlock(m);
+    const out = { t: 'block', x: m.x | 0, y: m.y | 0, z: m.z | 0, id: m.id | 0 };
+    for (const [id, c] of MP.conns) if (id !== conn.peer) { try { c.send(out); } catch (e) {} }
+  }
+}
+
+function mpHostTick() {
+  if (MP.role !== 'host' || !MP.conns.size) return;
+  const list = [{ id: MP.myId, name: myName(), x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch }];
+  for (const p of MP.players.values()) list.push({ id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch });
+  const msg = { t: 'players', list, wt: worldTime, day: dayCount, dl: settings.dayLen };
+  for (const c of MP.conns.values()) { try { c.send(msg); } catch (e) {} }
+}
+
+// ----- client side -----
+function mpClientTick() {
+  if (MP.role !== 'client' || !MP.hostConn || !MP.hostConn.open) return;
+  MP.hostConn.send({ t: 'pos', x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch });
+}
+
+function surfaceY(x, z) {
+  for (let y = CHUNK_HEIGHT - 2; y >= 1; y--) if (isSolidAt(x, y, z)) return y + 1;
+  return 30;
+}
+
+function mpClientMsg(m) {
+  if (!m || typeof m !== 'object') return;
+  if (m.t === 'welcome') {
+    MP.pending = { welcome: m, edits: [] };
+  } else if (m.t === 'edits') {
+    if (MP.pending) MP.pending.edits.push(m);
+  } else if (m.t === 'ready') {
+    mpFinishJoin();
+  } else if (m.t === 'block') {
+    mpApplyBlock(m);
+  } else if (m.t === 'players') {
+    const seen = new Set();
+    for (const q of m.list || []) {
+      if (!q || q.id === MP.myId) continue;
+      seen.add(q.id);
+      let p = MP.players.get(q.id);
+      if (!p) { p = { id: q.id }; MP.players.set(q.id, p); if (MP.role === 'client') mpToast(String(q.name || 'Player').slice(0, 16) + ' is here'); }
+      p.name = String(q.name || 'Player').slice(0, 16);
+      p.x = num(q.x); p.y = num(q.y); p.z = num(q.z); p.yaw = num(q.yaw); p.pitch = num(q.pitch);
+    }
+    for (const [id, p] of [...MP.players]) if (!seen.has(id)) { MP.players.delete(id); mpToast(p.name + ' left'); }
+    if (Number.isFinite(m.dl) && m.dl > 0) netDayLen = m.dl;
+    if (Number.isFinite(m.wt)) {
+      let d = m.wt - worldTime;
+      d -= Math.round(d);               // shortest way around the clock
+      if (Math.abs(d) > 0.004) worldTime = m.wt; else worldTime += d * 0.2;
+      if (worldTime < 0) worldTime += 1; if (worldTime >= 1) worldTime -= 1;
+      dayCount = m.day || dayCount;
+    }
+  } else if (m.t === 'reject') {
+    const why = String(m.why || 'Could not join');
+    mpStop();
+    MP.status = why;
+    mpToast(why);
+  }
+}
+
+// Replace our copy of the world with the host's and stand next to them
+function mpFinishJoin() {
+  const w = MP.pending;
+  MP.pending = null;
+  if (!w) return;
+  const wl = w.welcome;
+  MP.role = 'client';
+  guestSession = true;
+  settings.mode = wl.mode === 'survival' ? 'survival' : 'creative';
+  settings.difficulty = ['peaceful', 'normal', 'hard'].includes(wl.difficulty) ? wl.difficulty : 'normal';
+  edits.clear();
+  for (const e of w.edits) {
+    const m = new Map();
+    for (let i = 0; i + 1 < e.a.length; i += 2) m.set(e.a[i], e.a[i + 1]);
+    edits.set(e.k, m);
+  }
+  rebuildTorches();
+  minecarts.length = 0; mobs.length = 0; drops.length = 0;
+  clearChunks();
+  const hx = num(wl.host.x), hy = num(wl.host.y), hz = num(wl.host.z);
+  player.x = hx + 1.5; player.z = hz;
+  pregenAround(player.x, player.z);
+  player.y = Math.max(hy, surfaceY(Math.floor(player.x), Math.floor(player.z))) + 0.2;
+  player.vx = player.vy = player.vz = 0;
+  worldTime = num(wl.wt); dayCount = wl.day || 1; netDayLen = num(wl.dl) > 0 ? num(wl.dl) : null;
+  MP.status = 'connected';
+  clearInterval(MP.timer);
+  MP.timer = setInterval(mpClientTick, 100);
+  selectedSlot = Math.min(selectedSlot, 8);
+  renderHotbar();
+  syncSettingsUI();
+  mpToast('Joined ' + String(wl.host.name || 'the host') + "'s world. Progress here is not saved to your own world.");
+}
+
+// ----- block sync -----
+function mpApplyBlock(m) {
+  const x = m.x | 0, y = m.y | 0, z = m.z | 0, id = m.id | 0;
+  if (y < 1 || y >= CHUNK_HEIGHT || Math.abs(x) > 5000000 || Math.abs(z) > 5000000) return;
+  if (id !== 0 && (!BLOCK_MAP[id] || id === 9)) return;
+  mpApplying = true;
+  try { setBlock(x, y, z, id); } finally { mpApplying = false; }
+}
+
+function mpSendBlock(x, y, z, id) {
+  const m = { t: 'block', x, y, z, id };
+  if (MP.role === 'host') {
+    for (const c of MP.conns.values()) { try { c.send(m); } catch (e) {} }
+  } else if (MP.role === 'client' && MP.hostConn && MP.hostConn.open) {
+    MP.hostConn.send(m);
+  }
+}
+
+// ----- remote players: model and name tags -----
+const pVerts = [];
+(function buildPlayerModel() {
+  const S = TILE.P_SKIN, SH = TILE.P_SHIRT, P = TILE.P_PANTS;
+  pushBox(pVerts, -0.25, 1.35, -0.25, 0.25, 1.85, 0.25, S, S, S);
+  pushFace(pVerts, 2, -0.25, 1.35, -0.25, 0.25, 1.85, 0.254, TILE.P_FACE);
+  pushBox(pVerts, -0.25, 0.65, -0.125, 0.25, 1.35, 0.125, SH, SH, SH);
+  pushBox(pVerts, 0.25, 0.65, -0.125, 0.5, 1.35, 0.125, SH, SH, S);
+  pushBox(pVerts, -0.5, 0.65, -0.125, -0.25, 1.35, 0.125, SH, SH, S);
+  pushBox(pVerts, -0.25, 0, -0.125, 0, 0.65, 0.125, P, P, P);
+  pushBox(pVerts, 0, 0, -0.125, 0.25, 0.65, 0.125, P, P, P);
+})();
+const pVao = gl.createVertexArray();
+const pVbo = gl.createBuffer();
+gl.bindVertexArray(pVao);
+gl.bindBuffer(gl.ARRAY_BUFFER, pVbo);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pVerts), gl.STATIC_DRAW);
+setupAttribs();
+const pVertCount = pVerts.length / 7;
+
+function mpDrawPlayers(dt) {
+  if (!MP.players.size) return;
+  gl.bindVertexArray(pVao);
+  const k = Math.min(1, dt * 12);
+  for (const p of MP.players.values()) {
+    if (p.sx === undefined) { p.sx = p.x; p.sy = p.y; p.sz = p.z; p.syaw = p.yaw; }
+    p.sx += (p.x - p.sx) * k; p.sy += (p.y - p.sy) * k; p.sz += (p.z - p.sz) * k;
+    const d = ((p.yaw - p.syaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    p.syaw += d * k;
+    gl.uniform3f(uOffsetLoc, p.sx, p.sy, p.sz);
+    gl.uniform1f(uYawLoc, p.syaw + Math.PI);
+    gl.drawArrays(gl.TRIANGLES, 0, pVertCount);
+  }
+  gl.uniform1f(uYawLoc, 0);
+}
+
+const tagsEl = document.getElementById('tags');
+const tagEls = new Map();
+function mpClearTags() { tagsEl.textContent = ''; tagEls.clear(); }
+function mpUpdateTags(proj, view) {
+  const seen = new Set();
+  for (const p of MP.players.values()) {
+    if (p.sx === undefined) continue;
+    seen.add(p.id);
+    let el = tagEls.get(p.id);
+    if (!el) { el = document.createElement('div'); el.className = 'tag'; tagsEl.appendChild(el); tagEls.set(p.id, el); }
+    if (el.textContent !== p.name) el.textContent = p.name;
+    const x = p.sx, y = p.sy + 2.15, z = p.sz;
+    const vx = view[0] * x + view[4] * y + view[8] * z + view[12];
+    const vy = view[1] * x + view[5] * y + view[9] * z + view[13];
+    const vz = view[2] * x + view[6] * y + view[10] * z + view[14];
+    const cx = proj[0] * vx + proj[4] * vy + proj[8] * vz + proj[12];
+    const cy = proj[1] * vx + proj[5] * vy + proj[9] * vz + proj[13];
+    const cw = proj[3] * vx + proj[7] * vy + proj[11] * vz + proj[15];
+    if (cw <= 0.1 || cw > 90) { el.style.display = 'none'; continue; }
+    el.style.display = 'block';
+    el.style.transform = `translate(${(cx / cw * 0.5 + 0.5) * canvas.width}px, ${(1 - (cy / cw * 0.5 + 0.5)) * canvas.height}px) translate(-50%, -100%)`;
+  }
+  for (const [id, el] of tagEls) if (!seen.has(id)) { el.remove(); tagEls.delete(id); }
+}
 
 // Input handling
 const keys = {};
@@ -1422,7 +2012,7 @@ window.addEventListener('wheel', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings')) { closeScreen(); return; }
+  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings' || screen === 'create')) { closeScreen(); return; }
   if (screen === 'inv' && (e.code === 'KeyC' || e.code === 'KeyI')) { closeScreen(); return; }
   keys[e.code] = true;
   if (!locked || screen !== null || deadTimer > 0) return;
@@ -1446,7 +2036,6 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyF') {
     if (ridingCart) dismountCart();
   }
-  if (e.code === 'KeyR' && !isSurvival()) newWorld();
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 document.addEventListener('pointerlockchange', () => {
@@ -1800,7 +2389,7 @@ function skyColor() {
 }
 function updateTime(dt) {
   if (!isSurvival()) { worldTime = 0.25; return; }
-  worldTime += dt / (settings.dayLen * 60);
+  worldTime += dt / ((netDayLen || settings.dayLen) * 60);
   if (worldTime >= 1) { worldTime -= 1; dayCount++; }
 }
 function clockText() {
@@ -1857,9 +2446,14 @@ function die() {
     msg = 'Respawning...';
   }
   if (deathOutcome === 'reset') {
-    // Erase the save right away so reloading the page cannot undo it
-    pendingReset = true;
-    try { localStorage.removeItem(worldKey()); } catch (e) {}
+    if (guestSession) {
+      msg = 'You died in a shared world. Your own inventory was reset.';
+      document.getElementById('deathMsg').textContent = msg;
+    } else if (!isShared() && currentWorld) {
+      // Erase the save right away so reloading the page cannot undo it
+      pendingReset = true;
+      try { localStorage.removeItem(worldKey()); } catch (e) {}
+    }
   }
   document.getElementById('deathTitle').textContent = deathOutcome === 'reset' ? 'You Died For Real' : 'You Died';
   document.getElementById('deathMsg').textContent = msg;
@@ -2178,6 +2772,17 @@ function loop(now) {
     document.getElementById('fps').textContent = Math.round(frames / fpsTimer);
     frames = 0; fpsTimer = 0;
   }
+  if (!inGame) {
+    if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+      canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    gl.clearColor(0.35, 0.55, 0.85, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    requestAnimationFrame(loop);
+    return;
+  }
+  document.getElementById('mpLine').textContent = MP.role === 'none' ? '' : (MP.role === 'host' ? 'Hosting' : 'Joined') + ' · ' + (MP.players.size + 1) + ' online';
 
   // Stream chunks around player & build max 1 chunk per frame
   const pcx = Math.floor(player.x / CHUNK_SIZE);
@@ -2354,8 +2959,12 @@ function loop(now) {
     }
   }
 
+  mpDrawPlayers(dt);
+  mpUpdateTags(proj, view);
+
   requestAnimationFrame(loop);
 }
+initMenu();
 requestAnimationFrame(loop);
 </script>
 </body>
