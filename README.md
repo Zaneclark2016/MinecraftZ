@@ -1,4 +1,4 @@
-v.11:
-Big update! Multiplayer, with few bugs! Create a new world with your own name or join another.
+v.14:
+Introducing friends! Send a request to your friend, John, and when he's playing later after school, you can just join him! Nobody even needs to pause their game!
 
-Have Fun!
+Have fun!
