@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v11 - Worlds &amp; Multiplayer</title>
-<link rel="icon" href="minecraft.png">
+<title>MinecraftZ v14 - Worlds &amp; Multiplayer</title>
+<link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
   body { overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -59,7 +59,7 @@
   .btn:hover { background: #666; border-color: #ffd166; }
   .btn.primary { background: #3d8f3d; border-color: #8fd68f; }
   .btn:disabled { opacity: 0.4; cursor: default; }
-  #settings, #invScreen {
+  #settings, #invScreen, #friends {
     display: none; position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,0.78);
     color: #fff; align-items: center; justify-content: center; overflow: auto;
   }
@@ -127,7 +127,7 @@
 <div id="overlay">
   <h1 id="pauseTitle">World</h1>
   <div id="pauseInfo" style="color:#ccc;font-size:14px;margin-bottom:8px;line-height:1.6"></div>
-  <div><button class="btn primary" id="resumeBtn">Resume</button><button class="btn" id="settingsBtn">Settings</button><button class="btn" id="quitBtn">Save &amp; Quit</button></div>
+  <div><button class="btn primary" id="resumeBtn">Resume</button><button class="btn" id="pauseFriends">Friends</button><button class="btn" id="settingsBtn">Settings</button><button class="btn" id="quitBtn">Save &amp; Quit</button></div>
   <p>
   <b>WASD</b> Move | <b>Space</b> Jump / Climb Up | <b>Shift</b> Climb Down<br>
   <b>Right-Click</b> / <b>E</b> Place Block, Ride Minecart, Equip Armor<br>
@@ -142,7 +142,7 @@
     <div class="row"><span>Go online (join others in the same seed)</span><input type="checkbox" id="mmOnline"></div>
     <h2 style="margin-top:12px">Worlds</h2>
     <div id="worldList"></div>
-    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="mmNew">Create / Join World</button><button class="btn" id="mmSettings">Settings</button></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="mmNew">Create / Join World</button><button class="btn" id="mmFriends">Friends</button><button class="btn" id="mmSettings">Settings</button></div>
   </div>
 </div>
 <div id="createPanel">
@@ -153,7 +153,20 @@
     <div class="hint">Enter a friend's seed to go to their world. If they are online in that seed, you join them automatically and their mode and rules apply.</div>
     <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="survival">Survival</option></select></div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
+    <div class="row"><span>Mobs (Survival)</span><input type="checkbox" id="cMobs" checked></div>
+    <div class="row"><span>Day Length</span><input type="range" id="cDay" min="2" max="20" step="1" value="6"><span class="val" id="cvDay">6 min</span></div>
+    <div class="hint">World rules are fixed when the world is created, and everyone who joins uses them.</div>
     <div style="text-align:center;margin-top:12px"><button class="btn primary" id="cPlay">Play</button><button class="btn" id="cCancel">Cancel</button></div>
+  </div>
+</div>
+<div id="friends">
+  <div class="panel" style="width:min(94vw,540px)">
+    <h2>Friends</h2>
+    <div class="row"><span>Your ID: <b id="frMyId" style="color:#ffd166;letter-spacing:1px"></b></span><button class="btn" id="frCopy" style="margin:0;padding:4px 12px">Copy</button></div>
+    <div class="row"><span>Add a friend</span><span><input type="text" id="frAddId" maxlength="9" placeholder="ABCD-1234" style="width:110px"><button class="btn" id="frAddBtn" style="margin:0 0 0 6px;padding:4px 12px">Send request</button></span></div>
+    <div class="hint" id="frState"></div>
+    <div id="frList" style="max-height:42vh;overflow:auto"></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="frBack">Done</button></div>
   </div>
 </div>
 <div id="settings">
@@ -164,10 +177,11 @@
     <div class="hint">Mode is chosen when a world is created. In someone else's world, the host's mode applies.</div>
     <div class="row"><span>Multiplayer (join others in the same seed)</span><input type="checkbox" id="sOnline"></div>
     <div class="row"><span>Difficulty</span><select id="sDiff"><option value="peaceful">Peaceful</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
-    <div class="hint">Normal: each death lowers your max hearts (4, then 2, then 1), then you die for real and start over. Hard: one death erases everything. In a shared world, a reset only clears your own inventory and health.</div>
+    <div class="hint">Difficulty, mobs and day length are set when the world is created and can't be changed here. Normal: each death lowers your max hearts (4, then 2, then 1), then you die for real and start over. Hard: one death erases everything. In a shared world, a reset only clears your own inventory and health.</div>
     <div class="row" id="rowMobs"><span>Mobs (Survival)</span><input type="checkbox" id="sMobs"></div>
     <div class="row"><span>Day Length</span><input type="range" id="sDay" min="2" max="20" step="1"><span class="val" id="vDay"></span></div>
     <div class="row"><span>Render Distance</span><input type="range" id="sRender" min="2" max="8" step="1"><span class="val" id="vRender"></span></div>
+    <div class="row"><span>Camera (press V in game)</span><select id="sView"><option value="first">First person</option><option value="third">Third person (behind)</option><option value="front">Third person (front)</option></select></div>
     <div class="row"><span>Field of View</span><input type="range" id="sFov" min="50" max="110" step="1"><span class="val" id="vFov"></span></div>
     <div class="row"><span>Mouse Sensitivity</span><input type="range" id="sSens" min="20" max="250" step="5"><span class="val" id="vSens"></span></div>
     <div class="row"><span>Fog</span><input type="checkbox" id="sFog"></div>
@@ -527,8 +541,14 @@ function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[
 
 // ---------- Settings ----------
 const SETTINGS_KEY = 'minecraftz_settings_v7';
-const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true, name: '', online: true };
+const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true, name: '', online: true, view: 'first' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
+if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(settings.pid || '')) {
+  const al = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = '';
+  for (let i = 0; i < 8; i++) s += al[Math.floor(Math.random() * al.length)];
+  settings.pid = s.slice(0, 4) + '-' + s.slice(4);
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+}
 if (!settings.name) settings.name = 'Player' + (1000 + Math.floor(Math.random() * 9000));
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 const isSurvival = () => settings.mode === 'survival';
@@ -1163,12 +1183,14 @@ function syncSettingsUI() {
   $('sName').value = settings.name; $('mmName').value = settings.name;
   $('sOnline').checked = settings.online; $('mmOnline').checked = settings.online;
   $('sModeText').textContent = inGame ? (isSurvival() ? 'Survival' : 'Creative') : 'Set when you create a world';
-  $('sDiff').value = settings.difficulty;
-  $('sMobs').checked = settings.mobs;
-  $('sDay').value = settings.dayLen;   $('vDay').textContent = settings.dayLen + ' min';
+  const dl = netDayLen || settings.dayLen;
+  $('sDiff').value = settings.difficulty; $('sDiff').disabled = true;
+  $('sMobs').checked = settings.mobs;     $('sMobs').disabled = true;
+  $('sDay').value = dl; $('sDay').disabled = true; $('vDay').textContent = dl + ' min';
   $('sRender').value = settings.renderDist; $('vRender').textContent = settings.renderDist;
   $('sFov').value = settings.fov;      $('vFov').textContent = settings.fov + '°';
   $('sSens').value = settings.sens;    $('vSens').textContent = settings.sens + '%';
+  $('sView').value = settings.view;
   $('sFog').checked = settings.fog;
   $('sHud').checked = settings.hud;
   $('rowMobs').classList.toggle('off', settings.difficulty === 'peaceful');
@@ -1180,16 +1202,10 @@ function applySettings() {
   renderHotbar();
   saveSettings();
 }
-$('sDiff').onchange = (e) => {
-  settings.difficulty = e.target.value;
-  if (currentWorld && inGame && !guestSession) { currentWorld.difficulty = settings.difficulty; saveWorldList(); }
-  applySettings(); syncSettingsUI();
-};
-$('sMobs').onchange = (e) => { settings.mobs = e.target.checked; applySettings(); };
-$('sDay').oninput = (e) => { settings.dayLen = +e.target.value; applySettings(); syncSettingsUI(); };
 $('sRender').oninput = (e) => { settings.renderDist = +e.target.value; applySettings(); syncSettingsUI(); };
 $('sFov').oninput = (e) => { settings.fov = +e.target.value; applySettings(); syncSettingsUI(); };
 $('sSens').oninput = (e) => { settings.sens = +e.target.value; applySettings(); syncSettingsUI(); };
+$('sView').onchange = (e) => { settings.view = e.target.value; saveSettings(); };
 $('sFog').onchange = (e) => { settings.fog = e.target.checked; applySettings(); };
 $('sHud').onchange = (e) => { settings.hud = e.target.checked; applySettings(); };
 $('sName').oninput = (e) => { settings.name = e.target.value.slice(0, 16); $('mmName').value = settings.name; saveSettings(); };
@@ -1197,6 +1213,7 @@ $('mmName').oninput = (e) => { settings.name = e.target.value.slice(0, 16); $('s
 function onlineChanged(v) {
   settings.online = v; $('sOnline').checked = v; $('mmOnline').checked = v; saveSettings();
   if (inGame) { if (v) mpStart(); else mpStop(); }
+  presStart();
 }
 $('sOnline').onchange = (e) => onlineChanged(e.target.checked);
 $('mmOnline').onchange = (e) => onlineChanged(e.target.checked);
@@ -1219,6 +1236,7 @@ function refreshUI() {
   $('mainMenu').style.display = (!inGame && screen === null) ? 'flex' : 'none';
   $('createPanel').style.display = (!inGame && screen === 'create') ? 'flex' : 'none';
   $('settings').style.display = screen === 'settings' ? 'flex' : 'none';
+  $('friends').style.display = screen === 'friends' ? 'flex' : 'none';
   invScreen.style.display = screen === 'inv' ? 'flex' : 'none';
   if (screen !== 'inv') cursorImg.style.display = 'none';
   if (inGame && !locked && screen === null) updatePauseInfo();
@@ -1247,9 +1265,10 @@ $('quitBtn').onclick = (e) => { e.stopPropagation(); quitToMenu(); };
 $('settingsBack').onclick = () => closeScreen();
 $('invClose').onclick = () => closeScreen();
 $('mmSettings').onclick = () => openScreen('settings');
-$('mmNew').onclick = () => { $('cName').value = 'New World'; $('cSeed').value = ''; openScreen('create'); };
+$('mmNew').onclick = () => { $('cName').value = 'New World'; $('cSeed').value = ''; $('cMobs').checked = true; $('cDay').value = 6; $('cvDay').textContent = '6 min'; openScreen('create'); };
 $('cCancel').onclick = () => closeScreen();
 $('cPlay').onclick = () => createAndPlay();
+$('cDay').oninput = (e) => { $('cvDay').textContent = e.target.value + ' min'; };
 
 // ---------- Crafting ----------
 // cost keys are item ids: 4 Wood, 5 Planks, 20 Stick, 6 Stone, 2 Dirt, 10 Leaves
@@ -1513,6 +1532,9 @@ function startWorld(entry) {
   guestSession = false;
   settings.mode = entry.mode;
   settings.difficulty = entry.difficulty || 'normal';
+  settings.mobs = entry.mobs !== false;
+  settings.dayLen = entry.dayLen || 6;
+  netDayLen = null;
   worldSeed = entry.seed;
   $('seed').textContent = entry.seedText || entry.seed;
   // clean slate, then restore the save if there is one
@@ -1560,7 +1582,7 @@ function quitToMenu() {
 function createAndPlay() {
   const name = ($('cName').value.trim() || 'New World').slice(0, 32);
   const ps = parseSeed($('cSeed').value);
-  const entry = { id: newId(), name, seed: ps.seed, seedText: ps.text, mode: $('cMode').value, difficulty: $('cDiff').value, created: Date.now(), played: Date.now() };
+  const entry = { id: newId(), name, seed: ps.seed, seedText: ps.text, mode: $('cMode').value, difficulty: $('cDiff').value, mobs: $('cMobs').checked, dayLen: +$('cDay').value, created: Date.now(), played: Date.now() };
   worlds.push(entry);
   saveWorldList();
   screen = null;
@@ -1642,6 +1664,9 @@ function updatePauseInfo() {
 }
 
 function initMenu() {
+  loadFriends();
+  updateFriendsBadge();
+  presStart();
   loadWorldList();
   migrateOldWorlds();
   loadWorldList();
@@ -1799,7 +1824,7 @@ function mpHostMsg(conn, m) {
     MP.conns.set(conn.peer, conn);
     MP.players.set(conn.peer, { id: conn.peer, name, x: player.x, y: player.y, z: player.z, yaw: 0, pitch: 0 });
     conn.send({ t: 'welcome', seed: worldSeed, seedText: currentWorld ? currentWorld.seedText : String(worldSeed),
-               mode: settings.mode, difficulty: settings.difficulty, wt: worldTime, day: dayCount, dl: settings.dayLen,
+               mode: settings.mode, difficulty: settings.difficulty, mobs: settings.mobs, wt: worldTime, day: dayCount, dl: settings.dayLen,
                host: { name: myName(), x: player.x, y: player.y, z: player.z } });
     for (const [k, mm] of edits) {
       const a = [];
@@ -1885,6 +1910,7 @@ function mpFinishJoin() {
   guestSession = true;
   settings.mode = wl.mode === 'survival' ? 'survival' : 'creative';
   settings.difficulty = ['peaceful', 'normal', 'hard'].includes(wl.difficulty) ? wl.difficulty : 'normal';
+  settings.mobs = wl.mobs !== false;
   edits.clear();
   for (const e of w.edits) {
     const m = new Map();
@@ -1988,6 +2014,202 @@ function mpUpdateTags(proj, view) {
   for (const [id, el] of tagEls) if (!seen.has(id)) { el.remove(); tagEls.delete(id); }
 }
 
+// ---------- Friends (player IDs, requests, joining friends who are playing) ----------
+// Every player has a permanent ID. While online, the game keeps a small "presence" connection open under that ID,
+// so friends can send requests and ask "are you playing, and where?".
+const FR_KEY = 'minecraftz_friends_v1';
+const ID_RE = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+const presId = (pid) => 'mcz' + MP_VER + 'u-' + pid;
+let friends = [];             // { id, name, state: 'friend' | 'out' | 'in' }
+const frStatus = new Map();   // id -> { online, world, name, at }
+let presPeer = null, presState = 'off', presTimer = null, presRetry = null, presGen = 0;
+
+function loadFriends() {
+  try { const a = JSON.parse(localStorage.getItem(FR_KEY) || '[]'); friends = Array.isArray(a) ? a.filter(f => f && ID_RE.test(f.id) && ['friend', 'out', 'in'].includes(f.state)) : []; } catch (e) { friends = []; }
+}
+function saveFriends() { try { localStorage.setItem(FR_KEY, JSON.stringify(friends)); } catch (e) {} }
+const findFriend = (id) => friends.find(f => f.id === id);
+const cleanName = (n) => String(n || 'Player').replace(/[\u0000-\u001f]/g, '').slice(0, 16) || 'Player';
+
+function presStart() {
+  presStop();
+  if (!settings.online) { presState = 'off'; return; }
+  if (typeof Peer === 'undefined') { presState = 'unavailable'; return; }
+  const gen = ++presGen;
+  presState = 'connecting';
+  let peer;
+  try { peer = new Peer(presId(settings.pid), { debug: 0 }); } catch (e) { presState = 'unavailable'; return; }
+  presPeer = peer;
+  peer.on('open', () => { if (gen !== presGen) return; presState = 'ready'; frRefresh(); updateFriendsBadge(); });
+  peer.on('connection', (conn) => { if (gen === presGen) presAccept(conn); });
+  peer.on('disconnected', () => { if (gen === presGen) { try { peer.reconnect(); } catch (e) {} } });
+  peer.on('error', (err) => {
+    if (gen !== presGen) return;
+    if (err.type === 'unavailable-id') { presState = 'open-elsewhere'; try { peer.destroy(); } catch (e) {} presPeer = null; }
+    else if (presState !== 'ready') {
+      presState = 'unavailable';
+      clearTimeout(presRetry);
+      presRetry = setTimeout(() => { if (gen === presGen) presStart(); }, 20000);
+    }
+    frRender();
+  });
+}
+function presStop() {
+  presGen++;
+  clearTimeout(presRetry);
+  try { if (presPeer) presPeer.destroy(); } catch (e) {}
+  presPeer = null; presState = 'off';
+}
+
+function myWorldInfo() {
+  if (!inGame || !currentWorld || !settings.online || (MP.role !== 'host' && MP.role !== 'client')) return null;
+  return { seedText: String(currentWorld.seedText || currentWorld.seed), name: currentWorld.name, mode: settings.mode, players: MP.players.size + 1 };
+}
+
+// Someone else connected to us
+function presAccept(conn) {
+  conn.on('data', (m) => {
+    if (!m || typeof m !== 'object' || !ID_RE.test(String(m.from || ''))) return;
+    const from = m.from, name = cleanName(m.name), f = findFriend(from);
+    if (m.t === 'req') {
+      if (f && f.state === 'friend') { conn.send({ t: 'accept', from: settings.pid, name: myName() }); }
+      else if (f && f.state === 'out') { f.state = 'friend'; f.name = name; saveFriends(); conn.send({ t: 'accept', from: settings.pid, name: myName() }); mpToast(name + ' is now your friend'); }
+      else if (!f) { if (friends.filter(x => x.state === 'in').length < 50) { friends.push({ id: from, name, state: 'in' }); saveFriends(); mpToast('Friend request from ' + name); } }
+      frRender(); updateFriendsBadge();
+    } else if (m.t === 'accept') {
+      if (f && f.state === 'out') { f.state = 'friend'; f.name = name; saveFriends(); mpToast(name + ' accepted your request'); frRender(); updateFriendsBadge(); frRefresh(); }
+    } else if (m.t === 'decline' || m.t === 'remove') {
+      if (f && (f.state === 'out' || (m.t === 'remove' && f.state === 'friend'))) { friends = friends.filter(x => x !== f); frStatus.delete(from); saveFriends(); frRender(); updateFriendsBadge(); }
+    } else if (m.t === 'who') {
+      if (f && f.state === 'friend') { f.name = name; conn.send({ t: 'status', from: settings.pid, name: myName(), world: myWorldInfo() }); }
+      else conn.send({ t: 'nofriend', from: settings.pid });
+    }
+    setTimeout(() => { try { conn.close(); } catch (e) {} }, 500);
+  });
+  conn.on('error', () => {});
+}
+
+// Short-lived connection to a friend: send one message, optionally wait for the answer
+function frTalk(id, msg, onReply) {
+  if (typeof Peer === 'undefined' || !presPeer || presState !== 'ready') { if (onReply) onReply(null); return; }
+  let conn, done = false;
+  const finish = (r) => { if (done) return; done = true; clearTimeout(to); try { conn && conn.close(); } catch (e) {} if (onReply) onReply(r); };
+  const to = setTimeout(() => finish(null), 5000);
+  try { conn = presPeer.connect(presId(id), { serialization: 'json', reliable: true }); } catch (e) { finish(null); return; }
+  conn.on('open', () => { conn.send(Object.assign({ from: settings.pid, name: myName() }, msg)); if (!onReply) setTimeout(() => finish(null), 800); });
+  conn.on('data', (r) => finish(r));
+  conn.on('error', () => finish(null));
+  conn.on('close', () => finish(null));
+}
+
+// Ask every friend where they are; re-send pending requests
+function frRefresh() {
+  for (const f of friends.slice()) {
+    if (f.state === 'friend') {
+      frTalk(f.id, { t: 'who' }, (r) => {
+        if (r && r.t === 'status') { f.name = cleanName(r.name); frStatus.set(f.id, { online: true, world: r.world && r.world.seedText ? { seedText: String(r.world.seedText).slice(0, 40), name: String(r.world.name || '').slice(0, 32), mode: r.world.mode === 'survival' ? 'survival' : 'creative', players: r.world.players | 0 } : null, at: Date.now() }); }
+        else if (r && r.t === 'nofriend') { friends = friends.filter(x => x !== f); frStatus.delete(f.id); saveFriends(); }
+        else frStatus.set(f.id, { online: false, world: null, at: Date.now() });
+        frRender(); updateFriendsBadge();
+      });
+    } else if (f.state === 'out') {
+      frTalk(f.id, { t: 'req' }, (r) => {
+        if (r && r.t === 'accept') { f.state = 'friend'; f.name = cleanName(r.name); saveFriends(); frRender(); updateFriendsBadge(); }
+      });
+    }
+  }
+}
+
+function frAdd(rawId) {
+  const id = String(rawId || '').trim().toUpperCase().replace(/\s+/g, '');
+  const norm = id.length === 8 && !id.includes('-') ? id.slice(0, 4) + '-' + id.slice(4) : id;
+  if (!ID_RE.test(norm)) { mpToast('That is not a player ID (it looks like ABCD-1234)'); return; }
+  if (norm === settings.pid) { mpToast("That's your own ID"); return; }
+  const f = findFriend(norm);
+  if (f && f.state === 'friend') { mpToast('Already friends'); return; }
+  if (f && f.state === 'out') { mpToast('Request already sent'); return; }
+  if (f && f.state === 'in') { frAccept(f); return; }
+  friends.push({ id: norm, name: norm, state: 'out' });
+  saveFriends();
+  mpToast('Request sent. They need to be online to receive it; it is re-sent while you are.');
+  frRefresh();
+  frRender();
+}
+function frAccept(f) {
+  f.state = 'friend'; saveFriends();
+  frTalk(f.id, { t: 'accept' });
+  frRender(); updateFriendsBadge(); setTimeout(frRefresh, 1000);
+}
+function frDrop(f, msg) {
+  friends = friends.filter(x => x !== f); frStatus.delete(f.id); saveFriends();
+  frTalk(f.id, { t: msg });
+  frRender(); updateFriendsBadge();
+}
+function frJoin(f) {
+  const st = frStatus.get(f.id);
+  if (!st || !st.world) return;
+  if (inGame) quitToMenu();
+  const ps = parseSeed(st.world.seedText);
+  let entry = worlds.find(w => w.seed === ps.seed);
+  if (!entry) {
+    entry = { id: newId(), name: (f.name + "'s world").slice(0, 32), seed: ps.seed, seedText: ps.text, mode: st.world.mode, difficulty: 'normal', mobs: true, dayLen: 6, created: Date.now(), played: Date.now() };
+    worlds.push(entry); saveWorldList();
+  }
+  screen = null;
+  startWorld(entry);
+  canvas.requestPointerLock();
+  mpToast('Joining ' + f.name + '...');
+}
+
+function updateFriendsBadge() {
+  const n = friends.filter(f => f.state === 'in').length;
+  const t = n ? `Friends (${n})` : 'Friends';
+  $('mmFriends').textContent = t; $('pauseFriends').textContent = t;
+}
+
+function frRender() {
+  if (screen !== 'friends') return;
+  $('frMyId').textContent = settings.pid;
+  const msg = { off: 'Multiplayer is turned off in Settings, so friends are unavailable.', connecting: 'Connecting...', ready: '', unavailable: 'Could not reach the multiplayer service. Retrying...', 'open-elsewhere': 'This player ID is already open in another tab or window.' }[presState] || '';
+  $('frState').textContent = msg;
+  const list = $('frList');
+  list.textContent = '';
+  const mkBtn = (label, fn, cls) => { const b = document.createElement('button'); b.className = 'btn' + (cls ? ' ' + cls : ''); b.textContent = label; b.onclick = fn; return b; };
+  const row = (f, sub, btns) => {
+    const r = document.createElement('div'); r.className = 'worldrow';
+    const info = document.createElement('div'); info.className = 'winfo';
+    const b = document.createElement('b'); b.textContent = f.name;
+    const s = document.createElement('span'); s.textContent = sub;
+    info.append(b, s); r.append(info, ...btns); list.appendChild(r);
+  };
+  const head = (txt) => { const h = document.createElement('div'); h.className = 'hint'; h.style.marginTop = '10px'; h.textContent = txt; list.appendChild(h); };
+  const ins = friends.filter(f => f.state === 'in');
+  if (ins.length) { head('Requests for you'); ins.forEach(f => row(f, f.id, [mkBtn('Accept', () => frAccept(f), 'primary'), mkBtn('Decline', () => frDrop(f, 'decline'))])); }
+  const fs = friends.filter(f => f.state === 'friend');
+  head(fs.length ? 'Friends' : 'No friends yet. Share your ID or add theirs above.');
+  fs.forEach(f => {
+    const st = frStatus.get(f.id);
+    let sub = 'Checking...', btns = [];
+    if (st) {
+      if (!st.online) sub = 'Offline';
+      else if (st.world) { sub = `Playing "${st.world.name}" (${st.world.mode}, ${st.world.players} online)`; btns.push(mkBtn('Join', () => frJoin(f), 'primary')); }
+      else sub = 'Online, in the menu';
+    }
+    btns.push(mkBtn('Remove', () => { if (confirm('Remove ' + f.name + ' from your friends?')) frDrop(f, 'remove'); }));
+    row(f, sub + ' · ' + f.id, btns);
+  });
+  const outs = friends.filter(f => f.state === 'out');
+  if (outs.length) { head('Requests you sent'); outs.forEach(f => row(f, 'Waiting for them to come online · ' + f.id, [mkBtn('Cancel', () => frDrop(f, 'decline'))])); }
+}
+
+function openFriends() { openScreen('friends'); frRender(); frRefresh(); clearInterval(window.frPoll); window.frPoll = setInterval(() => { if (screen === 'friends') frRefresh(); else clearInterval(window.frPoll); }, 8000); }
+$('mmFriends').onclick = openFriends;
+$('pauseFriends').onclick = (e) => { e.stopPropagation(); openFriends(); };
+$('frBack').onclick = () => closeScreen();
+$('frAddBtn').onclick = () => { frAdd($('frAddId').value); $('frAddId').value = ''; };
+$('frAddId').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('frAddBtn').click(); });
+$('frCopy').onclick = () => { try { navigator.clipboard.writeText(settings.pid); mpToast('ID copied'); } catch (e) {} };
+
 // Input handling
 const keys = {};
 overlay.addEventListener('click', (e) => { if (e.target === overlay) canvas.requestPointerLock(); });
@@ -2013,7 +2235,7 @@ window.addEventListener('wheel', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings' || screen === 'create')) { closeScreen(); return; }
+  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings' || screen === 'create' || screen === 'friends')) { closeScreen(); return; }
   if (screen === 'inv' && (e.code === 'KeyC' || e.code === 'KeyI')) { closeScreen(); return; }
   keys[e.code] = true;
   if (!locked || screen !== null || deadTimer > 0) return;
@@ -2026,6 +2248,11 @@ window.addEventListener('keydown', (e) => {
     }
   }
   if (e.code === 'KeyC' || e.code === 'KeyI') openScreen('inv');
+  if (e.code === 'KeyV') {
+    settings.view = settings.view === 'first' ? 'third' : settings.view === 'third' ? 'front' : 'first';
+    $('sView').value = settings.view; saveSettings();
+    return;
+  }
   if (e.code === 'KeyN' && !isSurvival()) {
     if (ridingCart) dismountCart();
     player.noclip = !player.noclip;
@@ -2388,10 +2615,16 @@ function skyColor() {
   const tint = [0.95, 0.5, 0.3];
   return c.map((v, i) => v + (tint[i] - v) * dusk);
 }
-function updateTime(dt) {
+// The clock runs on real time, whether or not the player is paused, in a menu, or in a background tab.
+let lastClock = Date.now();
+function tickClock() {
+  const now = Date.now();
+  const dt = Math.min(60, Math.max(0, (now - lastClock) / 1000));
+  lastClock = now;
+  if (!inGame) return;
   if (!isSurvival()) { worldTime = 0.25; return; }
   worldTime += dt / ((netDayLen || settings.dayLen) * 60);
-  if (worldTime >= 1) { worldTime -= 1; dayCount++; }
+  while (worldTime >= 1) { worldTime -= 1; dayCount++; }
 }
 function clockText() {
   const hrs = (6 + worldTime * 24) % 24;
@@ -2857,9 +3090,9 @@ function loop(now) {
     }
   }
 
+  tickClock();
   const simulate = locked || screen === 'inv';
   if (simulate) {
-    updateTime(dt);
     updateSurvival(dt);
     updateSpawning(dt);
     updateMinecarts(dt);
@@ -2899,7 +3132,29 @@ function loop(now) {
 
   const eyeY = ridingCart ? (ridingCart.y + 1.15) : (player.y + 1.62);
   const proj = perspective(settings.fov * Math.PI / 180, canvas.width / canvas.height, 0.1, 220.0);
-  const view = viewMatrix(player.x, eyeY, player.z, player.yaw, player.pitch);
+  let view;
+  const camMode = settings.view;
+  if (camMode === 'first') {
+    view = viewMatrix(player.x, eyeY, player.z, player.yaw, player.pitch);
+  } else {
+    // camera sits on the line through the head along the view direction, pulled in front of walls
+    const cyw = Math.cos(player.yaw), syw = Math.sin(player.yaw), cpt = Math.cos(player.pitch), spt = Math.sin(player.pitch);
+    const sgn = camMode === 'third' ? 1 : -1;
+    const bx = sgn * syw * cpt, by = sgn * -spt, bz = sgn * cyw * cpt;   // direction from head to camera
+    // over-the-shoulder: slide the camera to the right so the view ahead isn't blocked by your body
+    let side = camMode === 'third' ? 1.0 : 0;
+    while (side > 0 && isSolidAt(Math.floor(player.x + cyw * side), Math.floor(eyeY), Math.floor(player.z - syw * side))) side -= 0.1;
+    side = Math.max(0, side);
+    const hx = player.x + cyw * side, hz = player.z - syw * side;
+    let dist = 4.2;
+    for (let d = 0.3; d <= 4.2; d += 0.1) {
+      if (isSolidAt(Math.floor(hx + bx * d), Math.floor(eyeY + by * d), Math.floor(hz + bz * d))) { dist = Math.max(0.3, d - 0.25); break; }
+    }
+    const camX = hx + bx * dist, camY = eyeY + by * dist, camZ = hz + bz * dist;
+    view = camMode === 'third'
+      ? viewMatrix(camX, camY, camZ, player.yaw, player.pitch)
+      : viewMatrix(camX, camY, camZ, player.yaw + Math.PI, -player.pitch);
+  }
 
   gl.useProgram(prog);
   gl.activeTexture(gl.TEXTURE0);
@@ -2961,11 +3216,19 @@ function loop(now) {
   }
 
   mpDrawPlayers(dt);
+  if (camMode !== 'first' && deadTimer <= 0) {
+    gl.bindVertexArray(pVao);
+    gl.uniform3f(uOffsetLoc, player.x, ridingCart ? ridingCart.y + 0.3 : player.y, player.z);
+    gl.uniform1f(uYawLoc, player.yaw + Math.PI);
+    gl.drawArrays(gl.TRIANGLES, 0, pVertCount);
+    gl.uniform1f(uYawLoc, 0);
+  }
   mpUpdateTags(proj, view);
 
   requestAnimationFrame(loop);
 }
 initMenu();
+setInterval(tickClock, 250);
 requestAnimationFrame(loop);
 </script>
 </body>
