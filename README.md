@@ -1,4 +1,4 @@
-v.14:
-Introducing friends! Send a request to your friend, John, and when he's playing later after school, you can just join him! Nobody even needs to pause their game!
+v.21:
+Lots of updates! Mining! Mobile Controls! 3rd person!
 
 Have fun!
