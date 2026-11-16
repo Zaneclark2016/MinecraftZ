@@ -679,6 +679,11 @@ const ITEMS = [
 
 const BLOCK_MAP = {};
 ITEMS.forEach(it => BLOCK_MAP[it.id] = it);
+// Ladders remember which wall they are on: 7 = wall to the north (-z) or whichever wall is found, 45 = south (+z), 46 = west (-x), 47 = east (+x)
+const LADDER_WALL = { 7: [0, -1], 45: [0, 1], 46: [-1, 0], 47: [1, 0] };
+for (const lid of [45, 46, 47]) BLOCK_MAP[lid] = Object.assign({}, BLOCK_MAP[7], { id: lid, hidden: true });
+const isLadder = (id) => id === 7 || id === 45 || id === 46 || id === 47;
+const ladderFor = (dx, dz) => dz === -1 ? 7 : dz === 1 ? 45 : dx === -1 ? 46 : 47;
 
 // Non-placeable items (tools, armor, materials)
 const ITEM_DEFS = {
@@ -1229,14 +1234,27 @@ function buildChunkMesh(ch) {
         const info = BLOCK_MAP[id];
         const lb = lightAtU(wx, y, wz);
 
-        if (id === 7) {
-          // Ladder rungs
+        if (isLadder(id)) {
+          // Ladder rungs, flat against the wall it hangs on
           const W = TILE.LADDER_WOOD;
-          pushBox(verts, x+0.12, y, z+0.02, x+0.24, y+1, z+0.14, W, W, W, lb);
-          pushBox(verts, x+0.76, y, z+0.02, x+0.88, y+1, z+0.14, W, W, W, lb);
-          for (let r = 0.15; r < 0.95; r += 0.25) {
-            pushBox(verts, x+0.12, y+r, z+0.02, x+0.88, y+r+0.08, z+0.14, W, W, W, lb);
+          let wd = LADDER_WALL[id];
+          if (id === 7) {
+            // older ladders: lean on whichever neighbouring wall is there
+            for (const c of [[0, -1], [0, 1], [-1, 0], [1, 0]]) if (isSolidAt(wx + c[0], y, wz + c[1])) { wd = c; break; }
           }
+          const bx = (a0, a1, d0, d1, y0, y1) => {
+            // a = position along the wall, d = depth out from the wall
+            if (wd[0] === 0) {
+              const z0 = wd[1] < 0 ? d0 : 1 - d1, z1 = wd[1] < 0 ? d1 : 1 - d0;
+              pushBox(verts, x + a0, y + y0, z + z0, x + a1, y + y1, z + z1, W, W, W, lb);
+            } else {
+              const x0 = wd[0] < 0 ? d0 : 1 - d1, x1 = wd[0] < 0 ? d1 : 1 - d0;
+              pushBox(verts, x + x0, y + y0, z + a0, x + x1, y + y1, z + a1, W, W, W, lb);
+            }
+          };
+          bx(0.12, 0.24, 0.02, 0.14, 0, 1);
+          bx(0.76, 0.88, 0.02, 0.14, 0, 1);
+          for (let r = 0.15; r < 0.95; r += 0.25) bx(0.12, 0.88, 0.02, 0.14, r, r + 0.08);
           continue;
         }
 
@@ -3386,14 +3404,29 @@ function handleUseOrPlace() {
     const overlapZ = (pz + 1 > player.z - 0.3) && (pz < player.z + 0.3);
     if (overlapX && overlapY && overlapZ) return;
   }
+  if (item.id === 7) {
+    // a ladder goes flat onto the wall you clicked
+    const dx = target.bx - px, dz = target.bz - pz;
+    let wall = null;
+    if (dx * dx + dz * dz === 1 && isSolidAt(target.bx, target.by, target.bz)) wall = [dx, dz];
+    if (!wall) {
+      const first = isLadder(target.id) ? LADDER_WALL[target.id] : null;
+      const order = (first ? [first] : []).concat([[0, -1], [0, 1], [-1, 0], [1, 0]]);
+      for (const c of order) if (isSolidAt(px + c[0], py, pz + c[1])) { wall = c; break; }
+    }
+    if (!wall) { mpToast('A ladder needs a wall to hang on'); return; }
+    setBlock(px, py, pz, ladderFor(wall[0], wall[1]));
+    consumeHeld();
+    return;
+  }
   setBlock(px, py, pz, item.id);
   consumeHeld();
 }
 
 // What each block turns into when broken (0 = nothing)
-const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14 };
+const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 45: 7, 46: 7, 47: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14 };
 // Seconds to break by hand
-const HARDNESS = { 1: 0.6, 2: 0.5, 3: 0.4, 4: 2.0, 5: 1.5, 6: 4.0, 7: 0.4, 8: 0.3, 10: 0.25, 11: 0.1, 12: 0.5, 13: 0.5, 14: 0.5, 15: 6.0, 16: 7.0, 17: 9.0 };
+const HARDNESS = { 1: 0.6, 2: 0.5, 3: 0.4, 4: 2.0, 5: 1.5, 6: 4.0, 7: 0.4, 45: 0.4, 46: 0.4, 47: 0.4, 8: 0.3, 10: 0.25, 11: 0.1, 12: 0.5, 13: 0.5, 14: 0.5, 15: 6.0, 16: 7.0, 17: 9.0 };
 const ORE_DROP = { 15: 26, 16: 27, 17: 28 };
 const ORE_TIER = { 15: 1, 16: 2, 17: 2 };   // iron ore needs any pickaxe, gold and diamonds need iron or better
 // tier: what it can mine. stone / ore / other: how fast it breaks those
@@ -3988,7 +4021,7 @@ function wxGust(now) {
   const s = Math.sin(Math.PI * f);
   return Math.pow(wxHash(i * 7 + 1), 1.5) * s * s;
 }
-const wxCovers = (id) => id !== 0 && id !== 7 && id !== 8 && id !== 11 && id !== 14;
+const wxCovers = (id) => id !== 0 && !isLadder(id) && id !== 8 && id !== 11 && id !== 14;
 function wxIsSheltered() {
   const x = Math.floor(player.x), z = Math.floor(player.z);
   for (let y = Math.floor(player.y + 1.9); y < CHUNK_HEIGHT; y++) if (wxCovers(getBlock(x, y, z))) return true;
@@ -4174,8 +4207,8 @@ function loop(now) {
       player.vx = mx * speed + wx.vx;
       player.vz = mz * speed + wx.vz;
 
-      const onLadder = getBlock(Math.floor(player.x), Math.floor(player.y + 0.5), Math.floor(player.z)) === 7 ||
-                       getBlock(Math.floor(player.x), Math.floor(player.y + 1.2), Math.floor(player.z)) === 7;
+      const onLadder = isLadder(getBlock(Math.floor(player.x), Math.floor(player.y + 0.5), Math.floor(player.z))) ||
+                       isLadder(getBlock(Math.floor(player.x), Math.floor(player.y + 1.2), Math.floor(player.z)));
 
       if (onLadder) {
         // on a ladder: walk forward to climb, back to climb down
