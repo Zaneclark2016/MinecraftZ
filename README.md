@@ -1,4 +1,4 @@
-v.24:
-New blocks, lots more gear
+v.24.2:
+Small fix
 
 Have fun!
