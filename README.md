@@ -1,4 +1,4 @@
-v.21:
-Lots of updates! Mining! Mobile Controls! 3rd person!
+v.24:
+New blocks, lots more gear
 
 Have fun!
