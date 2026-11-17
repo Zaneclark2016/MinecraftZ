@@ -60,7 +60,7 @@
   .btn:hover { background: #666; border-color: #ffd166; }
   .btn.primary { background: #3d8f3d; border-color: #8fd68f; }
   .btn:disabled { opacity: 0.4; cursor: default; }
-  #settings, #invScreen, #friends, #signEditor, #joinPanel {
+  #settings, #invScreen, #friends, #signEditor, #joinPanel, #shop {
     display: none; position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,0.78);
     color: #fff; align-items: center; justify-content: center; overflow: auto;
   }
@@ -121,8 +121,22 @@
   .recipe .need { flex: 1; color: #bbb; }
   .recipe.no { opacity: 0.45; }
   .recipe .btn { padding: 3px 12px; font-size: 13px; margin: 0; }
+  .craftarea { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .cgrid { display: grid; grid-template-columns: repeat(3, 44px); gap: 3px; }
+  .carrow { font-size: 26px; color: #ffd166; }
+  .islot.cout { width: 54px; height: 54px; background: #55502f; }
+  .recipe { cursor: pointer; }
   #cursorItem { position: fixed; width: 30px; height: 30px; pointer-events: none; z-index: 30; display: none; image-rendering: pixelated; }
   #clock { color: #ffd166; }
+  #brawlHud { display: none; position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 6; text-align: center; color: #fff; background: rgba(0,0,0,0.55); padding: 6px 14px; border-radius: 8px; font-size: 15px; line-height: 1.5; }
+  #brawlHud b { color: #ffd166; }
+  #brawlHud .btn { margin: 2px 0 0; padding: 3px 14px; font-size: 13px; pointer-events: auto; }
+  #brawlBanner { display: none; position: fixed; top: 22%; left: 0; right: 0; z-index: 7; text-align: center; color: #fff; font-size: 54px; font-weight: bold; text-shadow: 0 3px 10px #000; pointer-events: none; transition: opacity 0.6s; }
+  .shoprow { display: flex; align-items: center; gap: 10px; padding: 6px 8px; margin: 4px 0; background: #383838; border-radius: 6px; }
+  .shoprow img { width: 30px; height: 30px; image-rendering: pixelated; }
+  .shoprow .nm { flex: 1; } .shoprow .nm span { display: block; font-size: 12px; color: #bbb; }
+  .shoprow .btn { margin: 0; padding: 4px 12px; font-size: 13px; }
+  .shoprow.no { opacity: 0.5; }
   #mainMenu, #createPanel {
     display: none; position: fixed; inset: 0; z-index: 15; color: #fff; align-items: center; justify-content: center;
     background: linear-gradient(180deg, #1d2b3a 0%, #2c4a2a 100%); overflow: auto;
@@ -181,7 +195,8 @@
     <div class="row"><span>World name</span><input type="text" id="cName" maxlength="32" value="New World"></div>
     <div class="row"><span>Seed</span><input type="text" id="cSeed" maxlength="40" placeholder="blank = random"></div>
     <div class="hint">The same seed gives the same terrain, but every world is its own separate world, even with the same seed, so nobody can land in yours by accident. To play together, use the Friends list or share your world's join code.</div>
-    <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="survival">Survival</option></select></div>
+    <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="survival">Survival</option><option value="brawl">Brawl (arena waves)</option></select></div>
+    <div class="hint" id="cBrawlHint" style="display:none">Brawl: fight waves of mobs in a closed 20x20 arena. Earn points for every kill and spend them in the shop between waves. The other world options are ignored.</div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
     <div class="row"><span>Caves &amp; Ores</span><input type="checkbox" id="cCaves" checked></div>
     <div class="row"><span>Cloud world (friends can join while you are away)</span><input type="checkbox" id="cCloud"></div>
@@ -267,6 +282,9 @@
   <div id="mpLine"></div>
   <div id="ctrlLine"><b>Controls:</b> [E / Right-Click] Place or Ride Cart | [Left-Click] Break | [F] Exit Cart | [N] Noclip</div>
 </div>
+<div id="brawlHud"><div id="bhTop"></div><div id="bhSub"></div><button class="btn" id="bhShop">Shop (B)</button></div>
+<div id="brawlBanner"></div>
+<div id="shop"><div class="panel" style="min-width:380px;max-width:520px"><h2>Brawl Shop</h2><div id="shopPts" style="color:#ffd166;margin-bottom:6px"></div><div id="shopList" style="max-height:52vh;overflow:auto"></div><div style="margin-top:10px;display:flex;gap:8px;justify-content:center"><button class="btn primary" id="shopStart">Start next wave now</button><button class="btn" id="shopClose">Back to the arena</button></div></div></div>
 <div id="crosshair"></div>
 <div id="prompt">Press [E] or [Right-Click] to Ride Minecart</div>
 <div id="touchUI">
@@ -285,7 +303,7 @@ const gl = canvas.getContext('webgl2', { antialias: false });
 if (!gl) alert('WebGL2 is required to run MinecraftZ.');
 
 // Texture Atlas (16x16 pixel tiles, painted procedurally)
-const T = 16, COLS = 8, ROWS = 8;
+const T = 16, COLS = 8, ROWS = 12;
 const TILE = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, GLASS: 3, LOG_SIDE: 4, LOG_TOP: 5, PLANKS: 6, STONE: 7,
   LEAVES: 8, LADDER_WOOD: 9, TIE: 10, RAIL: 11, CART_OUT: 12, CART_IN: 13, WHEEL: 14, BLACK: 15,
@@ -297,7 +315,13 @@ const TILE = {
   IRON_ORE: 40, GOLD_ORE: 41, DIAMOND_ORE: 42, IRON_ICON: 43, GOLD_ICON: 44, DIAMOND_ICON: 45, IRON_PICK_ICON: 46,
   I_SWORD: 47, I_HELM: 48, I_CHEST: 49, I_AXE: 50,
   G_SWORD: 51, G_HELM: 52, G_CHEST: 53, G_PICK: 54, G_AXE: 55,
-  D_SWORD: 56, D_HELM: 57, D_CHEST: 58, D_PICK: 59, D_AXE: 60
+  D_SWORD: 56, D_HELM: 57, D_CHEST: 58, D_PICK: 59, D_AXE: 60,
+  COBBLE: 61, BRICK: 62, GRAVEL: 63, CLAY: 64, SNOW: 65, OBSIDIAN: 66, SHELF: 67,
+  WOOL_R: 68, WOOL_B: 69, WOOL_G: 70, WOOL_Y: 71, SANDSTONE_SIDE: 72, SANDSTONE_TOP: 73, ICE: 74,
+  COPPER_ORE: 75, COPPER_ICON: 76, LEATHER_ICON: 77, NETH_ICON: 78, L_HELM: 79, L_CHEST: 80,
+  C_SWORD: 81, C_HELM: 82, C_CHEST: 83, C_PICK: 84, C_AXE: 85,
+  O_SWORD: 86, O_HELM: 87, O_CHEST: 88, O_PICK: 89, O_AXE: 90,
+  N_SWORD: 91, N_HELM: 92, N_CHEST: 93, N_PICK: 94, N_AXE: 95
 };
 
 const atlasCanvas = document.createElement('canvas');
@@ -573,6 +597,7 @@ atlasCanvas.height = ROWS * T;
   oreTile(TILE.IRON_ORE, [222, 178, 150], [190, 140, 112]);
   oreTile(TILE.GOLD_ORE, [250, 222, 55], [225, 170, 20]);
   oreTile(TILE.DIAMOND_ORE, [95, 238, 232], [40, 190, 200]);
+  oreTile(TILE.COPPER_ORE, [226, 142, 92], [64, 190, 150]);
   const ingot = (tile, h, m, d) => art(tile, [
     '................', '................', '................', '.....hhhhhhhh...',
     '....hhhhhhhhhd..', '...mmmmmmmmmdd..', '...mmmmmmmmmd...', '...mmmmmmmmdd...',
@@ -581,6 +606,14 @@ atlasCanvas.height = ROWS * T;
   ], { h, m, d });
   ingot(TILE.IRON_ICON, [236, 236, 240], [205, 205, 212], [140, 140, 150]);
   ingot(TILE.GOLD_ICON, [255, 240, 120], [250, 205, 40], [190, 140, 20]);
+  ingot(TILE.COPPER_ICON, [244, 170, 120], [212, 120, 72], [146, 76, 44]);
+  ingot(TILE.NETH_ICON, [128, 112, 118], [84, 72, 78], [46, 38, 44]);
+  art(TILE.LEATHER_ICON, [
+    '................', '................', '..hhhhhhhhhhh...', '.hmmmmmmmmmmmd..',
+    '.hmmmsmmmmmmmd..', '.hmmmmmmmsmmmd..', '.hmmsmmmmmmmmd..', '.hmmmmmmmmsmmd..',
+    '.hmmmmmsmmmmmd..', '..dddddddddddd..', '................', '................',
+    '................', '................', '................', '................'
+  ], { h: [196, 132, 78], m: [160, 98, 52], d: [105, 62, 32], s: [225, 215, 190] });
   art(TILE.DIAMOND_ICON, [
     '................', '................', '................', '.....cccccc.....',
     '....cwwcccce....', '...cwcccccccce..', '..cccccccccccee.', '...ccccccccce...',
@@ -623,9 +656,14 @@ atlasCanvas.height = ROWS * T;
   const MAT = {
     I: { hi: [236, 236, 240], mid: [205, 205, 212], dk: [140, 140, 150] },
     G: { hi: [255, 240, 120], mid: [250, 205, 40], dk: [190, 140, 20] },
-    D: { hi: [210, 255, 255], mid: [70, 225, 225], dk: [30, 150, 170] }
+    D: { hi: [210, 255, 255], mid: [70, 225, 225], dk: [30, 150, 170] },
+    C: { hi: [244, 170, 120], mid: [212, 120, 72], dk: [146, 76, 44] },
+    O: { hi: [130, 90, 190], mid: [58, 36, 94], dk: [28, 16, 52] },
+    N: { hi: [128, 112, 118], mid: [78, 66, 74], dk: [42, 34, 40] }
   };
-  for (const m of ['I', 'G', 'D']) {
+  art(TILE.L_HELM, HELM_ROWS, { l: [105, 62, 32], w: [160, 98, 52], k: [105, 62, 32] });
+  art(TILE.L_CHEST, CHEST_ROWS, { w: [160, 98, 52], k: [105, 62, 32] });
+  for (const m of ['I', 'G', 'D', 'C', 'O', 'N']) {
     const c = MAT[m];
     art(TILE[m + '_SWORD'], SWORD_ROWS, { l: c.mid, k: WK });
     art(TILE[m + '_HELM'], HELM_ROWS, { l: c.dk, w: c.mid, k: c.dk });
@@ -633,6 +671,63 @@ atlasCanvas.height = ROWS * T;
     art(TILE[m + '_AXE'], AXE_ROWS, { a: c.mid, k: WK });
     if (m !== 'I') art(TILE[m + '_PICK'], PICK_ROWS, { p: c.mid, k: WK });
   }
+
+  // ---- v26 new blocks ----
+  // Cobblestone: irregular stones with dark seams between them
+  const cobPts = Array.from({ length: 9 }, () => [rnd() * T, rnd() * T, jit(26)]);
+  paint(TILE.COBBLE, (x, y) => {
+    let d1 = 99, d2 = 99, s = 0;
+    for (const p of cobPts) for (const ox of [-T, 0, T]) for (const oy of [-T, 0, T]) {
+      const d = Math.hypot(x - (p[0] + ox), y - (p[1] + oy));
+      if (d < d1) { d2 = d1; d1 = d; s = p[2]; } else if (d < d2) d2 = d;
+    }
+    const n = jit(8);
+    if (d2 - d1 < 1.5) return [70 + n, 70 + n, 74 + n];
+    return [128 + s + n, 128 + s + n, 132 + s + n];
+  });
+  // Bricks
+  paint(TILE.BRICK, (x, y) => {
+    const row = Math.floor(y / 4), off = (row % 2) ? 4 : 0;
+    const n = jit(10);
+    if (y % 4 === 3 || (x + off) % 8 === 7) return [168 + jit(6), 160 + jit(6), 150 + jit(6)];
+    return [158 + n, 72 + n * 0.6, 58 + n * 0.5];
+  });
+  // Gravel
+  paint(TILE.GRAVEL, () => {
+    const r = rnd(); const n = jit(14);
+    if (r < 0.18) return [78 + n, 76 + n, 78 + n];
+    if (r > 0.86) return [164 + n, 160 + n, 156 + n];
+    return [126 + n, 122 + n, 120 + n];
+  });
+  paint(TILE.CLAY, () => { const n = jit(7); return [158 + n, 164 + n, 180 + n]; });
+  paint(TILE.SNOW, () => { const n = jit(5); return [244 + n, 247 + n, 252]; });
+  // Obsidian
+  paint(TILE.OBSIDIAN, (x, y) => {
+    const n = jit(6); const streak = ((x * 3 + y * 5) % 11 === 0) ? 18 : 0;
+    return [24 + n + streak, 14 + n * 0.5 + streak * 0.4, 42 + n + streak * 1.4];
+  });
+  // Bookshelf side: plank edges, rows of coloured books
+  const bookCols = [[170, 50, 50], [60, 90, 170], [60, 140, 70], [200, 170, 60], [120, 70, 150], [190, 110, 50]];
+  const books = Array.from({ length: T }, () => bookCols[Math.floor(rnd() * bookCols.length)]);
+  paint(TILE.SHELF, (x, y) => {
+    const n = jit(7);
+    if (y < 2 || y > 13 || y === 7 || y === 8) return [166 + n, 134 + n, 82 + n * 0.8];
+    const c = books[(x + (y < 7 ? 0 : 5)) % T];
+    const edge = (x % 3 === 2);
+    const k = edge ? 0.7 : 1;
+    return [c[0] * k + n, c[1] * k + n, c[2] * k + n];
+  });
+  const wool = (tile, c) => paint(tile, (x, y) => { const n = jit(6) + (((x + y) % 2) ? 5 : -5); return [c[0] + n, c[1] + n, c[2] + n]; });
+  wool(TILE.WOOL_R, [196, 54, 54]); wool(TILE.WOOL_B, [58, 86, 190]); wool(TILE.WOOL_G, [66, 150, 62]); wool(TILE.WOOL_Y, [232, 200, 58]);
+  paint(TILE.SANDSTONE_TOP, () => { const n = jit(6); return [220 + n, 205 + n, 150 + n * 0.8]; });
+  paint(TILE.SANDSTONE_SIDE, (x, y) => {
+    const n = jit(5); const band = (y === 4 || y === 5 || y === 11) ? -14 : 0;
+    return [216 + n + band, 200 + n + band, 146 + n * 0.8 + band];
+  });
+  paint(TILE.ICE, (x, y) => {
+    const n = jit(5); const streak = ((x + y * 2) % 13 === 0 || (x * 2 - y) % 17 === 0) ? 28 : 0;
+    return [150 + n + streak, 200 + n + streak, 240 + streak * 0.4];
+  });
 
   ctx.putImageData(img, 0, 0);
 })();
@@ -674,7 +769,21 @@ const ITEMS = [
   { id: 14, name: 'Sign',    top: TILE.PLANKS,      side: TILE.PLANKS,     bot: TILE.PLANKS,    icon: TILE.SIGN_ICON,   solid: false, transparent: true  },
   { id: 15, name: 'Iron Ore',    top: TILE.IRON_ORE,    side: TILE.IRON_ORE,    bot: TILE.IRON_ORE,    icon: TILE.IRON_ORE,    solid: true, transparent: false },
   { id: 16, name: 'Gold Ore',    top: TILE.GOLD_ORE,    side: TILE.GOLD_ORE,    bot: TILE.GOLD_ORE,    icon: TILE.GOLD_ORE,    solid: true, transparent: false },
-  { id: 17, name: 'Diamond Ore', top: TILE.DIAMOND_ORE, side: TILE.DIAMOND_ORE, bot: TILE.DIAMOND_ORE, icon: TILE.DIAMOND_ORE, solid: true, transparent: false }
+  { id: 17, name: 'Diamond Ore', top: TILE.DIAMOND_ORE, side: TILE.DIAMOND_ORE, bot: TILE.DIAMOND_ORE, icon: TILE.DIAMOND_ORE, solid: true, transparent: false },
+  { id: 48, name: 'Cobblestone', top: TILE.COBBLE, side: TILE.COBBLE, bot: TILE.COBBLE, icon: TILE.COBBLE, solid: true, transparent: false },
+  { id: 49, name: 'Bricks',      top: TILE.BRICK,  side: TILE.BRICK,  bot: TILE.BRICK,  icon: TILE.BRICK,  solid: true, transparent: false },
+  { id: 50, name: 'Gravel',      top: TILE.GRAVEL, side: TILE.GRAVEL, bot: TILE.GRAVEL, icon: TILE.GRAVEL, solid: true, transparent: false },
+  { id: 51, name: 'Clay',        top: TILE.CLAY,   side: TILE.CLAY,   bot: TILE.CLAY,   icon: TILE.CLAY,   solid: true, transparent: false },
+  { id: 52, name: 'Snow',        top: TILE.SNOW,   side: TILE.SNOW,   bot: TILE.SNOW,   icon: TILE.SNOW,   solid: true, transparent: false },
+  { id: 53, name: 'Obsidian',    top: TILE.OBSIDIAN, side: TILE.OBSIDIAN, bot: TILE.OBSIDIAN, icon: TILE.OBSIDIAN, solid: true, transparent: false },
+  { id: 54, name: 'Bookshelf',   top: TILE.PLANKS, side: TILE.SHELF,  bot: TILE.PLANKS, icon: TILE.SHELF,  solid: true, transparent: false },
+  { id: 55, name: 'Red Wool',    top: TILE.WOOL_R, side: TILE.WOOL_R, bot: TILE.WOOL_R, icon: TILE.WOOL_R, solid: true, transparent: false },
+  { id: 56, name: 'Blue Wool',   top: TILE.WOOL_B, side: TILE.WOOL_B, bot: TILE.WOOL_B, icon: TILE.WOOL_B, solid: true, transparent: false },
+  { id: 57, name: 'Green Wool',  top: TILE.WOOL_G, side: TILE.WOOL_G, bot: TILE.WOOL_G, icon: TILE.WOOL_G, solid: true, transparent: false },
+  { id: 58, name: 'Yellow Wool', top: TILE.WOOL_Y, side: TILE.WOOL_Y, bot: TILE.WOOL_Y, icon: TILE.WOOL_Y, solid: true, transparent: false },
+  { id: 59, name: 'Sandstone',   top: TILE.SANDSTONE_TOP, side: TILE.SANDSTONE_SIDE, bot: TILE.SANDSTONE_TOP, icon: TILE.SANDSTONE_SIDE, solid: true, transparent: false },
+  { id: 60, name: 'Ice',         top: TILE.ICE,    side: TILE.ICE,    bot: TILE.ICE,    icon: TILE.ICE,    solid: true, transparent: false },
+  { id: 61, name: 'Copper Ore',  top: TILE.COPPER_ORE, side: TILE.COPPER_ORE, bot: TILE.COPPER_ORE, icon: TILE.COPPER_ORE, solid: true, transparent: false }
 ];
 
 const BLOCK_MAP = {};
@@ -710,9 +819,29 @@ const ITEM_DEFS = {
   40: { id: 40, name: 'Diamond Helmet',    icon: TILE.D_HELM,  armor: 'head',  points: 4 },
   41: { id: 41, name: 'Diamond Chestplate', icon: TILE.D_CHEST, armor: 'chest', points: 8 },
   42: { id: 42, name: 'Diamond Pickaxe',   icon: TILE.D_PICK,  tool: 'pick' },
-  43: { id: 43, name: 'Diamond Axe',       icon: TILE.D_AXE,   tool: 'axe', damage: 7 }
+  43: { id: 43, name: 'Diamond Axe',       icon: TILE.D_AXE,   tool: 'axe', damage: 7 },
+  62: { id: 62, name: 'Copper Ingot',      icon: TILE.COPPER_ICON },
+  63: { id: 63, name: 'Leather',           icon: TILE.LEATHER_ICON },
+  64: { id: 64, name: 'Netherite Ingot',   icon: TILE.NETH_ICON },
+  65: { id: 65, name: 'Leather Helmet',    icon: TILE.L_HELM,  armor: 'head',  points: 1 },
+  66: { id: 66, name: 'Leather Chestplate', icon: TILE.L_CHEST, armor: 'chest', points: 3 },
+  67: { id: 67, name: 'Copper Sword',      icon: TILE.C_SWORD, tool: 'sword', damage: 5 },
+  68: { id: 68, name: 'Copper Helmet',     icon: TILE.C_HELM,  armor: 'head',  points: 2 },
+  69: { id: 69, name: 'Copper Chestplate', icon: TILE.C_CHEST, armor: 'chest', points: 5 },
+  70: { id: 70, name: 'Copper Pickaxe',    icon: TILE.C_PICK,  tool: 'pick' },
+  71: { id: 71, name: 'Copper Axe',        icon: TILE.C_AXE,   tool: 'axe', damage: 4 },
+  72: { id: 72, name: 'Obsidian Sword',    icon: TILE.O_SWORD, tool: 'sword', damage: 9 },
+  73: { id: 73, name: 'Obsidian Helmet',   icon: TILE.O_HELM,  armor: 'head',  points: 5 },
+  74: { id: 74, name: 'Obsidian Chestplate', icon: TILE.O_CHEST, armor: 'chest', points: 8 },
+  75: { id: 75, name: 'Obsidian Pickaxe',  icon: TILE.O_PICK,  tool: 'pick' },
+  76: { id: 76, name: 'Obsidian Axe',      icon: TILE.O_AXE,   tool: 'axe', damage: 8 },
+  77: { id: 77, name: 'Netherite Sword',   icon: TILE.N_SWORD, tool: 'sword', damage: 11 },
+  78: { id: 78, name: 'Netherite Helmet',  icon: TILE.N_HELM,  armor: 'head',  points: 6 },
+  79: { id: 79, name: 'Netherite Chestplate', icon: TILE.N_CHEST, armor: 'chest', points: 10 },
+  80: { id: 80, name: 'Netherite Pickaxe', icon: TILE.N_PICK,  tool: 'pick' },
+  81: { id: 81, name: 'Netherite Axe',     icon: TILE.N_AXE,   tool: 'axe', damage: 10 }
 };
-const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43];
+const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81];
 function itemInfo(id) { return ITEM_DEFS[id] || BLOCK_MAP[id]; }
 function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[id] && ITEM_DEFS[id].armor ? 1 : 64; }
 
@@ -766,7 +895,7 @@ function renderHearts() {
   heartsEl.style.display = isSurvival() ? 'flex' : 'none';
   if (!isSurvival()) return;
   let html = '';
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < Math.max(10, Math.ceil(maxHp / 2)); i++) {
     if (i * 2 >= maxHp) { html += '<span class="h lost">&#9829;</span>'; continue; }
     const v = hp - i * 2;
     html += `<span class="h ${v >= 2 ? 'full' : v === 1 ? 'half' : ''}">&#9829;</span>`;
@@ -915,6 +1044,7 @@ function smoothNoise(x, z) {
   return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
 }
 function terrainHeight(wx, wz) {
+  if (brawlWorld) return 20;
   const n1 = smoothNoise(wx * 0.04, wz * 0.04) * 14;
   const n2 = smoothNoise(wx * 0.12, wz * 0.12) * 4;
   return Math.floor(10 + n1 + n2);
@@ -922,6 +1052,7 @@ function terrainHeight(wx, wz) {
 
 // 3D value noise for caves and ore veins
 let cavesOn = false;
+let brawlWorld = false;   // Brawl: a closed 20x20 arena floating in the sky
 function hash3(x, y, z, s) {
   const n = Math.sin(x * 127.1 + y * 269.5 + z * 311.7 + s * 74.7 + worldSeed * 0.13) * 43758.5453123;
   return n - Math.floor(n);
@@ -937,7 +1068,7 @@ function vnoise3(x, y, z, s) {
   return y0 + (y1 - y0) * fz;
 }
 // Tunnels where two noise fields are both near their middle, big caverns where a third is high, ore blobs in what is left
-const ORE_T = { iron: 0.86, gold: 0.905, diamond: 0.935 };
+const ORE_T = { iron: 0.91, gold: 0.945, diamond: 0.962, copper: 0.915 };
 function carveColumn(data, x, z, wx, wz, h) {
   for (let y = 2; y <= h; y++) {
     const idx = (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
@@ -955,8 +1086,9 @@ function carveColumn(data, x, z, wx, wz, h) {
     if (air) { data[idx] = 0; continue; }
     if (b === 6 && y <= h - 4) {
       if (vnoise3(wx * 0.3, y * 0.3, wz * 0.3, 10) > ORE_T.iron) data[idx] = 15;
-      else if (y <= 14 && vnoise3(wx * 0.3, y * 0.3, wz * 0.3, 11) > ORE_T.gold) data[idx] = 16;
-      else if (y <= 9 && vnoise3(wx * 0.3, y * 0.3, wz * 0.3, 12) > ORE_T.diamond) data[idx] = 17;
+      else if (y <= 30 && vnoise3(wx * 0.3, y * 0.3, wz * 0.3, 13) > ORE_T.copper) data[idx] = 61;
+      else if (y <= 11 && vnoise3(wx * 0.3, y * 0.3, wz * 0.3, 11) > ORE_T.gold) data[idx] = 16;
+      else if (y <= 7 && vnoise3(wx * 0.3, y * 0.3, wz * 0.3, 12) > ORE_T.diamond) data[idx] = 17;
     }
   }
 }
@@ -981,9 +1113,25 @@ function isUnderground(wx, wy, wz) {
   }
   return false;
 }
-function areaName(wx, wy, wz) { return isUnderground(wx, wy, wz) ? 'Mines' : biomeAt(wx, wz); }
+function areaName(wx, wy, wz) { if (brawlWorld) return 'Arena'; return isUnderground(wx, wy, wz) ? 'Mines' : biomeAt(wx, wz); }
 
+function brawlChunk(cx, cz) {
+  const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+  for (let x = 0; x < CHUNK_SIZE; x++) for (let z = 0; z < CHUNK_SIZE; z++) {
+    const wx = cx * CHUNK_SIZE + x, wz = cz * CHUNK_SIZE + z;
+    if (wx < -1 || wx > 20 || wz < -1 || wz > 20) continue;
+    const inside = wx >= 0 && wx < 20 && wz >= 0 && wz < 20;
+    for (let y = 0; y < 29; y++) {
+      const idx = (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
+      if (y < 20) data[idx] = 6;
+      else if (inside) { if (y === 20) data[idx] = ((wx + wz) & 1) ? 48 : 6; }
+      else data[idx] = y === 28 ? 6 : 49;
+    }
+  }
+  return data;
+}
 function generateChunkData(cx, cz) {
+  if (brawlWorld) return brawlChunk(cx, cz);
   const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -1146,6 +1294,56 @@ function pushBox(verts, x0, y0, z0, x1, y1, z1, topT, sideT, botT, bl) {
   pushFace(verts, 5, x0, y0, z0, x1, y1, z1, sideT, bl);
 }
 
+// ---------- Rail shapes: flat, sloped and curved, chosen from neighbouring rails ----------
+function railInfo(x, y, z) {
+  const R = (dx, dy, dz) => getBlock(x + dx, y + dy, z + dz) === 8;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (const [dx, dz] of dirs) if (R(dx, 1, dz)) return { kind: 'slope', axis: dx ? 'x' : 'z', dir: dx || dz };
+  const c = dirs.map(([dx, dz]) => R(dx, 0, dz) || R(dx, -1, dz));
+  const [px, nx, pz, nz] = c;
+  const hasX = px || nx, hasZ = pz || nz;
+  if (hasX && hasZ) {
+    if (c.filter(Boolean).length === 2) return { kind: 'curve', sx: px ? 1 : -1, sz: pz ? 1 : -1 };
+    return { kind: 'flat', axis: (px && nx) ? 'x' : 'z' };
+  }
+  return { kind: 'flat', axis: hasX ? 'x' : 'z' };
+}
+const QUAD_REV = [0, 2, 1, 0, 3, 2];
+function pushQuad2(verts, P, tile, bl) {
+  const tx = tile % COLS, ty = Math.floor(tile / COLS), span = 1 - 2 * UV_INSET;
+  for (const order of [QUAD_ORDER, QUAD_REV]) for (const i of order) {
+    verts.push(P[i][0], P[i][1], P[i][2], (tx + UV_INSET + UV_FLAT[i][0] * span) / COLS, (ty + UV_INSET + UV_FLAT[i][1] * span) / ROWS, 1.0, bl || 0);
+  }
+}
+function pushRail(verts, x, y, z, info, lb) {
+  const TI = TILE.TIE, RA = TILE.RAIL;
+  if (info.kind === 'flat') {
+    if (info.axis === 'x') {
+      for (let t = 0.1; t < 0.95; t += 0.28) pushBox(verts, x+t, y, z+0.12, x+t+0.14, y+0.05, z+0.88, TI, TI, TI, lb);
+      pushBox(verts, x, y+0.05, z+0.20, x+1, y+0.12, z+0.30, RA, RA, RA, lb);
+      pushBox(verts, x, y+0.05, z+0.70, x+1, y+0.12, z+0.80, RA, RA, RA, lb);
+    } else {
+      for (let t = 0.1; t < 0.95; t += 0.28) pushBox(verts, x+0.12, y, z+t, x+0.88, y+0.05, z+t+0.14, TI, TI, TI, lb);
+      pushBox(verts, x+0.20, y+0.05, z, x+0.30, y+0.12, z+1, RA, RA, RA, lb);
+      pushBox(verts, x+0.70, y+0.05, z, x+0.80, y+0.12, z+1, RA, RA, RA, lb);
+    }
+    return;
+  }
+  let pt, N, ties, tw;
+  if (info.kind === 'slope') {
+    N = 4; ties = [0.12, 0.37, 0.62, 0.87]; tw = 0.07;
+    pt = (u, off, yo) => { const hh = info.dir > 0 ? u : 1 - u; return info.axis === 'x' ? [x + u, y + hh + yo, z + 0.5 + off] : [x + 0.5 + off, y + hh + yo, z + u]; };
+  } else {
+    const cx = x + 0.5 + info.sx * 0.5, cz = z + 0.5 + info.sz * 0.5;
+    N = 8; ties = [0.1, 0.3, 0.5, 0.7, 0.9]; tw = 0.09;
+    pt = (u, off, yo) => { const th = u * Math.PI / 2, r = 0.5 + off; return [cx - info.sx * r * Math.cos(th), y + yo, cz - info.sz * r * Math.sin(th)]; };
+  }
+  for (const s of ties) pushQuad2(verts, [pt(s - tw, -0.38, 0.02), pt(s + tw, -0.38, 0.02), pt(s + tw, 0.38, 0.02), pt(s - tw, 0.38, 0.02)], TI, lb);
+  for (const off of [-0.25, 0.25]) for (let i = 0; i < N; i++) {
+    pushQuad2(verts, [pt(i / N, off - 0.05, 0.07), pt(i / N, off + 0.05, 0.07), pt((i + 1) / N, off + 0.05, 0.07), pt((i + 1) / N, off - 0.05, 0.07)], RA, lb);
+  }
+}
+
 // ---------- Torch light ----------
 // Light spreads from each torch through non-opaque cells, losing 1 level per step.
 const LR = 12;
@@ -1259,23 +1457,7 @@ function buildChunkMesh(ch) {
         }
 
         if (id === 8) {
-          // Track: wood ties + iron rails oriented along connected neighbors
-          const nZ = (getBlock(wx, y, wz - 1) === 8 || getBlock(wx, y, wz + 1) === 8);
-          const nX = (getBlock(wx - 1, y, wz) === 8 || getBlock(wx + 1, y, wz) === 8);
-          const TI = TILE.TIE, RA = TILE.RAIL;
-          if (nX && !nZ) {
-            for (let t = 0.1; t < 0.95; t += 0.28) {
-              pushBox(verts, x+t, y, z+0.12, x+t+0.14, y+0.05, z+0.88, TI, TI, TI, lb);
-            }
-            pushBox(verts, x, y+0.05, z+0.20, x+1, y+0.12, z+0.30, RA, RA, RA, lb);
-            pushBox(verts, x, y+0.05, z+0.70, x+1, y+0.12, z+0.80, RA, RA, RA, lb);
-          } else {
-            for (let t = 0.1; t < 0.95; t += 0.28) {
-              pushBox(verts, x+0.12, y, z+t, x+0.88, y+0.05, z+t+0.14, TI, TI, TI, lb);
-            }
-            pushBox(verts, x+0.20, y+0.05, z, x+0.30, y+0.12, z+1, RA, RA, RA, lb);
-            pushBox(verts, x+0.70, y+0.05, z, x+0.80, y+0.12, z+1, RA, RA, RA, lb);
-          }
+          pushRail(verts, x, y, z, railInfo(wx, y, wz), lb);
           continue;
         }
 
@@ -1518,6 +1700,7 @@ function refreshUI() {
   $('createPanel').style.display = (!inGame && screen === 'create') ? 'flex' : 'none';
   $('settings').style.display = screen === 'settings' ? 'flex' : 'none';
   $('friends').style.display = screen === 'friends' ? 'flex' : 'none';
+  $('shop').style.display = screen === 'shop' ? 'flex' : 'none';
   $('signEditor').style.display = screen === 'sign' ? 'flex' : 'none';
   $('joinPanel').style.display = (!inGame && screen === 'joincode') ? 'flex' : 'none';
   invScreen.style.display = screen === 'inv' ? 'flex' : 'none';
@@ -1531,12 +1714,13 @@ function openScreen(name) {
   if (locked) unlockGame(); else refreshUI();
 }
 function closeScreen() {
+  if (screen === 'inv') returnCraftGrid();
   if (screen === 'inv' && cursor.id) {
     const left = addItem(cursor.id, cursor.count);
     if (left > 0) spawnDrop(player.x, player.y + 1.2, player.z, cursor.id, left);
     cursor = { id: 0, count: 0 };
   }
-  const wasInv = screen === 'inv' || screen === 'sign';
+  const wasInv = screen === 'inv' || screen === 'sign' || screen === 'shop';
   screen = null;
   refreshUI();
   renderHotbar();
@@ -1548,51 +1732,122 @@ $('quitBtn').onclick = (e) => { e.stopPropagation(); quitToMenu(); };
 $('settingsBack').onclick = () => closeScreen();
 $('invClose').onclick = () => closeScreen();
 $('mmSettings').onclick = () => openScreen('settings');
-$('mmNew').onclick = () => { $('cName').value = 'New World'; $('cSeed').value = ''; $('cMobs').checked = true; $('cCaves').checked = true; $('cCloud').checked = false; $('cDay').value = 6; $('cvDay').textContent = '6 min'; openScreen('create'); };
+$('mmNew').onclick = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; $('cName').value = 'New World'; $('cSeed').value = ''; $('cMobs').checked = true; $('cCaves').checked = true; $('cCloud').checked = false; $('cDay').value = 6; $('cvDay').textContent = '6 min'; openScreen('create'); };
 $('cCancel').onclick = () => closeScreen();
+$('cMode').onchange = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; };
 $('cPlay').onclick = () => createAndPlay();
 $('cDay').oninput = (e) => { $('cvDay').textContent = e.target.value + ' min'; };
 
-// ---------- Crafting ----------
-// cost keys are item ids: 4 Wood, 5 Planks, 20 Stick, 6 Stone, 2 Dirt, 10 Leaves
-const RECIPES = [
-  { out: 5,  n: 4, cost: { 4: 1 } },
-  { out: 20, n: 4, cost: { 5: 2 } },
-  { out: 21, n: 1, cost: { 5: 2, 20: 1 } },
-  { out: 24, n: 1, cost: { 5: 3, 20: 2 } },
-  { out: 22, n: 1, cost: { 5: 5 } },
-  { out: 23, n: 1, cost: { 5: 8 } },
-  { out: 7,  n: 2, cost: { 20: 5 } },
-  { out: 8,  n: 6, cost: { 6: 2, 20: 3 } },
-  { out: 9,  n: 1, cost: { 6: 5 } },
-  { out: 3,  n: 2, cost: { 13: 2 } },
-  { out: 11, n: 4, cost: { 20: 1, 5: 1 } },
-  { out: 25, n: 1, cost: { 5: 3, 20: 2 } },
-  { out: 14, n: 3, cost: { 5: 6, 20: 1 } },
-  { out: 29, n: 1, cost: { 26: 3, 20: 2 } },
-  { out: 30, n: 1, cost: { 26: 2, 20: 1 } },
-  { out: 31, n: 1, cost: { 26: 5 } },
-  { out: 32, n: 1, cost: { 26: 8 } },
-  { out: 33, n: 1, cost: { 26: 3, 20: 2 } },
-  { out: 34, n: 1, cost: { 27: 2, 20: 1 } },
-  { out: 35, n: 1, cost: { 27: 5 } },
-  { out: 36, n: 1, cost: { 27: 8 } },
-  { out: 37, n: 1, cost: { 27: 3, 20: 2 } },
-  { out: 38, n: 1, cost: { 27: 3, 20: 2 } },
-  { out: 39, n: 1, cost: { 28: 2, 20: 1 } },
-  { out: 40, n: 1, cost: { 28: 5 } },
-  { out: 41, n: 1, cost: { 28: 8 } },
-  { out: 42, n: 1, cost: { 28: 3, 20: 2 } },
-  { out: 43, n: 1, cost: { 28: 3, 20: 2 } },
-  { out: 1,  n: 1, cost: { 2: 1, 10: 1 } }
-];
-function canAfford(cost) { return Object.entries(cost).every(([id, n]) => countItem(+id) >= n); }
-function craft(r) {
-  if (!canAfford(r.cost)) return;
-  for (const [id, n] of Object.entries(r.cost)) removeItem(+id, n);
-  const left = addItem(r.out, r.n);
-  if (left > 0) spawnDrop(player.x, player.y + 1.2, player.z, r.out, left);
+// ---------- Crafting: 3x3 grid, shaped and shapeless recipes ----------
+// ids: 4 Wood, 5 Planks, 20 Stick, 6 Stone, 2 Dirt, 10 Leaves, 13 Sand, 3 Glass
+const RECIPES = [];
+const shaped = (out, n, pat, key) => RECIPES.push({ out, n, pat, key });
+const shapeless = (out, n, ids) => RECIPES.push({ out, n, less: ids });
+shapeless(5, 4, [4]);
+shaped(20, 4, ['P', 'P'], { P: 5 });
+shaped(7, 3, ['S.S', 'SSS', 'S.S'], { S: 20 });
+shaped(8, 6, ['C.C', 'CSC', 'C.C'], { C: 6, S: 20 });
+shaped(9, 1, ['C.C', 'CCC'], { C: 6 });
+shapeless(3, 2, [13, 13]);
+shaped(11, 4, ['P', 'S'], { P: 5, S: 20 });
+shaped(14, 3, ['PPP', 'PPP', '.S.'], { P: 5, S: 20 });
+shapeless(48, 2, [6]);
+shapeless(49, 2, [6, 6, 6, 2, 2]);
+shapeless(50, 2, [6, 13]);
+shapeless(51, 2, [2, 2, 13]);
+shapeless(52, 2, [3, 13, 13]);
+shapeless(53, 2, [28, 6, 6]);
+shaped(54, 1, ['PPP', 'SSS', 'PPP'], { P: 5, S: 20 });
+shapeless(55, 1, [10, 10, 10, 10, 2]);
+shapeless(56, 1, [10, 10, 10, 10, 3]);
+shapeless(57, 1, [10, 10, 10, 10, 4]);
+shapeless(58, 1, [10, 10, 10, 10, 13]);
+shaped(59, 2, ['SS', 'SS'], { S: 13 });
+shaped(60, 2, ['GG', 'GG'], { G: 3 });
+shapeless(1, 1, [2, 10]);
+shapeless(64, 1, [28, 27, 27, 53]);
+// gear: material item, then sword / pickaxe / axe / helmet / chestplate
+for (const [m, sw, pk, ax, hm, ch] of [
+  [5, 21, 24, 25, 22, 23], [63, 0, 0, 0, 65, 66], [62, 67, 70, 71, 68, 69], [26, 30, 29, 33, 31, 32], [27, 34, 37, 38, 35, 36],
+  [28, 39, 42, 43, 40, 41], [53, 72, 75, 76, 73, 74], [64, 77, 80, 81, 78, 79]]) {
+  const key = { M: m, S: 20 };
+  if (sw) { shaped(sw, 1, ['M', 'M', 'S'], key); shaped(pk, 1, ['MMM', '.S.', '.S.'], key); shaped(ax, 1, ['MM', 'MS', '.S'], key); }
+  shaped(hm, 1, ['MMM', 'M.M'], key);
+  shaped(ch, 1, ['M.M', 'MMM', 'MMM'], key);
 }
+for (const r of RECIPES) {
+  if (r.less) { r.cells = r.less.slice(); r.w = Math.min(3, r.cells.length); r.rows = null; }
+  else { r.rows = r.pat.map(row => [...row].map(ch => ch === '.' ? 0 : r.key[ch])); r.cells = r.rows.flat().filter(Boolean); }
+}
+const craftGrid = Array.from({ length: 9 }, () => ({ id: 0, count: 0 }));
+function matchRecipe() {
+  const ids = craftGrid.map(s => s.count > 0 ? s.id : 0);
+  const filled = ids.filter(Boolean);
+  if (!filled.length) return null;
+  let r0 = 3, r1 = -1, c0 = 3, c1 = -1;
+  ids.forEach((id, i) => { if (id) { const r = Math.floor(i / 3), c = i % 3; r0 = Math.min(r0, r); r1 = Math.max(r1, r); c0 = Math.min(c0, c); c1 = Math.max(c1, c); } });
+  const rows = [];
+  for (let r = r0; r <= r1; r++) { const row = []; for (let c = c0; c <= c1; c++) row.push(ids[r * 3 + c]); rows.push(row); }
+  const sortedFilled = filled.slice().sort((a, b) => a - b).join(',');
+  for (const rec of RECIPES) {
+    if (rec.less) { if (rec.less.length === filled.length && rec.less.slice().sort((a, b) => a - b).join(',') === sortedFilled) return rec; continue; }
+    const pr = rec.rows;
+    if (pr.length !== rows.length || pr[0].length !== rows[0].length) continue;
+    const same = (flip) => pr.every((row, r) => row.every((id, c) => id === rows[r][flip ? row.length - 1 - c : c]));
+    if (same(false) || same(true)) return rec;
+  }
+  return null;
+}
+function takeCraftOutput() {
+  const rec = matchRecipe();
+  if (!rec) return;
+  if (cursor.id) {
+    if (cursor.id !== rec.out || stackMax(rec.out) <= 1 || cursor.count + rec.n > stackMax(rec.out)) return;
+    cursor.count += rec.n;
+  } else cursor = { id: rec.out, count: rec.n };
+  for (const s of craftGrid) if (s.count > 0) { s.count--; if (s.count <= 0) { s.id = 0; s.count = 0; } }
+}
+function returnCraftGrid() {
+  for (const s of craftGrid) {
+    if (s.id && s.count > 0) {
+      const left = addItem(s.id, s.count);
+      if (left > 0) spawnDrop(player.x, player.y + 1.2, player.z, s.id, left);
+    }
+    s.id = 0; s.count = 0;
+  }
+}
+function slotRight(arr, i) {
+  const s = arr[i];
+  if (cursor.id) {
+    if (!s.id || (s.id === cursor.id && stackMax(s.id) > 1 && s.count < stackMax(s.id))) {
+      if (!s.id) { s.id = cursor.id; s.count = 0; }
+      s.count++; cursor.count--;
+      if (cursor.count <= 0) cursor = { id: 0, count: 0 };
+    }
+  } else if (s.id) {
+    const take = Math.ceil(s.count / 2);
+    cursor = { id: s.id, count: take };
+    s.count -= take;
+    if (s.count <= 0) { s.id = 0; s.count = 0; }
+  }
+}
+let craftPlaceOne = false;
+// Drag a held stack across squares to drop one item into each
+let dragState = null, suppressClickUntil = 0;
+const slotKey = (arr, i) => (arr === craftGrid ? 'c' : 'i') + i;
+function slotDown(e, arr, i) {
+  if (e.button !== 0 || !cursor.id || cursor.count < 2) return;
+  dragState = { arr, i, started: false, done: new Set() };
+}
+function slotEnter(arr, i, redraw) {
+  if (!dragState || !cursor.id) return;
+  const key = slotKey(arr, i);
+  if (dragState.done.has(key) || (dragState.arr === arr && dragState.i === i)) return;
+  if (!dragState.started) { dragState.started = true; slotRight(dragState.arr, dragState.i); dragState.done.add(slotKey(dragState.arr, dragState.i)); }
+  if (cursor.id) { slotRight(arr, i); dragState.done.add(key); }
+  redraw();
+}
+document.addEventListener('mouseup', () => { if (dragState && dragState.started) suppressClickUntil = performance.now() + 80; dragState = null; });
 
 // ---------- Inventory screen ----------
 function slotClick(arr, i) {
@@ -1634,6 +1889,40 @@ function updateCursorImg() {
     cursorImg.style.display = 'block';
   } else cursorImg.style.display = 'none';
 }
+function renderCraftUI(redraw) {
+  const hd = document.createElement('h2');
+  hd.style.cssText = 'font-size:16px;margin-top:10px';
+  hd.textContent = 'Crafting';
+  invExtra.appendChild(hd);
+  const area = document.createElement('div'); area.className = 'craftarea';
+  const grid = document.createElement('div'); grid.className = 'cgrid';
+  craftGrid.forEach((s, i) => {
+    const d = slotEl(s, false);
+    d.addEventListener('mousedown', (e) => slotDown(e, craftGrid, i));
+    d.addEventListener('mouseenter', () => slotEnter(craftGrid, i, redraw));
+    d.addEventListener('click', () => { if (performance.now() < suppressClickUntil) return; if (craftPlaceOne && cursor.id) slotRight(craftGrid, i); else slotClick(craftGrid, i); redraw(); });
+    d.addEventListener('contextmenu', (e) => { e.preventDefault(); slotRight(craftGrid, i); redraw(); });
+    grid.appendChild(d);
+  });
+  const arrow = document.createElement('div'); arrow.className = 'carrow'; arrow.textContent = '\u2192';
+  const rec = matchRecipe();
+  const out = slotEl(rec ? { id: rec.out, count: rec.n } : null, false);
+  out.classList.add('cout');
+  if (rec) out.title = itemInfo(rec.out).name + ' - click to take';
+  out.addEventListener('click', () => { takeCraftOutput(); redraw(); });
+  area.append(grid, arrow, out);
+  const side = document.createElement('div'); side.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-left:10px;font-size:12px;color:#bbb';
+  const t1 = document.createElement('button'); t1.className = 'btn'; t1.style.cssText = 'margin:0;padding:3px 10px;font-size:12px';
+  t1.textContent = craftPlaceOne ? 'Place one: ON' : 'Place one: off';
+  t1.title = 'Left click drops a single item into a crafting square (right click does this too)';
+  t1.addEventListener('click', () => { craftPlaceOne = !craftPlaceOne; redraw(); });
+  const t2 = document.createElement('button'); t2.className = 'btn'; t2.style.cssText = 'margin:0;padding:3px 10px;font-size:12px';
+  t2.textContent = 'Clear grid';
+  t2.addEventListener('click', () => { returnCraftGrid(); redraw(); });
+  side.append(t1, t2);
+  area.appendChild(side);
+  invExtra.appendChild(area);
+}
 function renderInv() {
   $('invTitle').textContent = isSurvival() ? 'Inventory & Crafting' : 'Creative Inventory';
   armorSlotsEl.innerHTML = '';
@@ -1655,27 +1944,13 @@ function renderInv() {
     for (let i = 0; i < 9; i++) order.push(i);
     order.forEach((i) => {
       const d = slotEl(inv[i], i === selectedSlot);
-      d.addEventListener('click', () => { slotClick(inv, i); redraw(); });
+      d.addEventListener('mousedown', (e) => slotDown(e, inv, i));
+      d.addEventListener('mouseenter', () => slotEnter(inv, i, redraw));
+      d.addEventListener('click', () => { if (performance.now() < suppressClickUntil) return; slotClick(inv, i); redraw(); });
+      d.addEventListener('contextmenu', (e) => { e.preventDefault(); slotRight(inv, i); redraw(); });
       invGrid.appendChild(d);
     });
-    const h = document.createElement('h2');
-    h.style.cssText = 'font-size:16px;margin-top:10px';
-    h.textContent = 'Hand Crafting';
-    invExtra.appendChild(h);
-    RECIPES.forEach((r) => {
-      const ok = canAfford(r.cost);
-      const row = document.createElement('div');
-      row.className = 'recipe' + (ok ? '' : ' no');
-      const need = Object.entries(r.cost).map(([id, n]) => `${n}× ${itemInfo(+id).name}`).join(' + ');
-      row.innerHTML = `<img src="${tileIconURL(itemInfo(r.out).icon)}" alt=""><b>${r.n}× ${itemInfo(r.out).name}</b><span class="need">${need}</span>`;
-      const b = document.createElement('button');
-      b.className = 'btn';
-      b.textContent = 'Craft';
-      b.disabled = !ok;
-      b.addEventListener('click', () => { craft(r); redraw(); });
-      row.appendChild(b);
-      invExtra.appendChild(row);
-    });
+    renderCraftUI(redraw);
   } else {
     armorSlotsEl.style.display = 'none';
     creativeBar.forEach((s, i) => {
@@ -1764,6 +2039,7 @@ function migrateOldWorlds() {
 
 function saveWorld() {
   if (!inGame || !currentWorld || guestSession || pendingReset) return;
+  if (brawlWorld) { currentWorld.best = brawl.best; currentWorld.played = Date.now(); saveWorldList(); return; }
   try {
     const e = {};
     if (!isCloud()) for (const [k, m] of edits) {
@@ -1842,6 +2118,7 @@ function startWorld(entry, pre) {
   settings.difficulty = entry.difficulty || 'normal';
   settings.mobs = entry.mobs !== false;
   cavesOn = entry.caves === true;
+  brawlWorld = entry.brawl === true;
   settings.dayLen = entry.dayLen || 6;
   netDayLen = null;
   worldSeed = entry.seed;
@@ -1860,7 +2137,8 @@ function startWorld(entry, pre) {
   for (let i = 0; i < 9; i++) creativeBar[i] = { id: i + 1, count: 1 };
   player.x = 8.5; player.z = 8.5; player.y = terrainHeight(8, 8) + 3;
   player.vx = player.vy = player.vz = 0;
-  const hadSave = loadSaveInto(entry);
+  const hadSave = brawlWorld ? false : loadSaveInto(entry);
+  if (brawlWorld) { brawl.best = entry.best || 0; brawlReset(); }
   if (entry.cloud) {
     edits.clear(); torches.clear(); signs.clear();
     cloudApply('/', pre);
@@ -1876,7 +2154,7 @@ function startWorld(entry, pre) {
   applySettings();
   renderHotbar();
   refreshUI();
-  mpStart();
+  if (!brawlWorld) mpStart();
   if (entry.cloud) cloudStart();
   saveWorld();
 }
@@ -1887,7 +2165,8 @@ function quitToMenu() {
   cloudStop();
   $('cloudDot').textContent = '';
   mpStop();
-  inGame = false; screen = null; currentWorld = null; guestSession = false;
+  inGame = false; screen = null; currentWorld = null; guestSession = false; brawlWorld = false;
+  $('brawlHud').style.display = 'none'; $('brawlBanner').style.display = 'none';
   mobs.length = 0; drops.length = 0; minecarts.length = 0; ridingCart = null;
   deadTimer = 0;
   $('death').style.display = 'none';
@@ -1901,8 +2180,10 @@ function quitToMenu() {
 async function createAndPlay() {
   const name = ($('cName').value.trim() || 'New World').slice(0, 32);
   const ps = parseSeed($('cSeed').value);
-  const entry = { id: newId(), name, seed: ps.seed, seedText: ps.text, mode: $('cMode').value, difficulty: $('cDiff').value, mobs: $('cMobs').checked, caves: $('cCaves').checked, dayLen: +$('cDay').value, rid: newRid(), created: Date.now(), played: Date.now() };
-  if ($('cCloud').checked) {
+  const isB = $('cMode').value === 'brawl';
+  const entry = { id: newId(), name, seed: ps.seed, seedText: ps.text, mode: isB ? 'survival' : $('cMode').value, difficulty: isB ? 'normal' : $('cDiff').value, mobs: isB ? true : $('cMobs').checked, caves: isB ? false : $('cCaves').checked, dayLen: +$('cDay').value, rid: newRid(), created: Date.now(), played: Date.now() };
+  if (isB) { entry.brawl = true; entry.best = 0; }
+  if ($('cCloud').checked && !isB) {
     $('cPlay').disabled = true;
     const ok = await createCloudEntry(entry);
     $('cPlay').disabled = false;
@@ -1941,7 +2222,7 @@ function renderWorldList() {
     const b = document.createElement('b');
     b.textContent = w.name;
     const sp = document.createElement('span');
-    sp.textContent = `${w.cloud ? 'Cloud world · ' : w.remote ? 'Shared world · ' : ''}Seed ${w.seedText || w.seed} · ${w.mode === 'survival' ? 'Survival' : 'Creative'} · ${w.difficulty} · ${timeAgo(w.played)}`;
+    sp.textContent = `${w.cloud ? 'Cloud world · ' : w.remote ? 'Shared world · ' : ''}Seed ${w.seedText || w.seed} · ${w.brawl ? 'Brawl' : w.mode === 'survival' ? 'Survival' : 'Creative'} · ${w.brawl ? 'Best wave ' + (w.best || 0) : w.difficulty} · ${timeAgo(w.played)}`;
     info.append(b, sp);
     const mk = (label, fn, cls) => {
       const btn = document.createElement('button');
@@ -1952,12 +2233,12 @@ function renderWorldList() {
     };
     row.append(info,
       mk('Play', () => { startWorld(w); lockGame(); }, 'primary'),
-      ...(w.caves === true ? [] : [mk('Add caves', () => {
+      ...(w.caves === true || w.brawl ? [] : [mk('Add caves', () => {
         if (!confirm(`Add caves and ores to "${w.name}"? They appear in the terrain under and around your builds. Your placed blocks stay as they are, but a cave can open beneath a build. This cannot be undone.`)) return;
         w.caves = true; saveWorldList(); renderWorldList();
       })]),
       ...(w.cloud ? [mk('Copy join link', () => { try { navigator.clipboard.writeText(cloudLink(w)); mpToast('Join link copied. Send it to your friend.'); } catch (e) { prompt('Join link', cloudLink(w)); } })]
-                  : w.remote ? [] : [mk('Upload to cloud', () => uploadToCloud(w))]),
+                  : w.remote || w.brawl ? [] : [mk('Upload to cloud', () => uploadToCloud(w))]),
       mk('Rename', () => {
         const n = prompt('Rename world', w.name);
         if (n && n.trim()) { w.name = n.trim().slice(0, 32); saveWorldList(); renderWorldList(); }
@@ -3052,9 +3333,10 @@ window.addEventListener('wheel', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings' || screen === 'create' || screen === 'friends' || screen === 'joincode')) { closeScreen(); return; }
+  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings' || screen === 'create' || screen === 'friends' || screen === 'joincode' || screen === 'shop')) { closeScreen(); return; }
   if (e.code === 'Escape' && screen === 'sign') { finishSign(true); return; }
   if (screen === 'inv' && (e.code === 'KeyC' || e.code === 'KeyI')) { closeScreen(); return; }
+  if (screen === 'shop' && e.code === 'KeyB') { closeScreen(); return; }
   keys[e.code] = true;
   if (!locked || screen !== null || deadTimer > 0) return;
 
@@ -3067,6 +3349,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'KeyC' || e.code === 'KeyI') openScreen('inv');
   if (e.code === 'KeyV') { cycleView(); return; }
+  if (e.code === 'KeyB' && brawlWorld && brawl.phase === 'break') { brawlOpenShop(); return; }
   if (e.code === 'KeyN') toggleNoclip();
   if (e.code === 'KeyE') handleUseOrPlace();
   if (e.code === 'KeyQ' && !isSurvival()) handleBreak();
@@ -3270,7 +3553,8 @@ function raycastTarget() {
     if (t >= 0 && t < bestEntDist) { bestEntDist = t; hitCart = cart; hitMob = null; }
   }
   for (const m of mobs) {
-    const t = rayAABB(eyeX, eyeY, eyeZ, dir, m.x - 0.4, m.y, m.z - 0.4, m.x + 0.4, m.y + 1.85, m.z + 0.4, bestEntDist);
+    const sc = m.sc || 1;
+    const t = rayAABB(eyeX, eyeY, eyeZ, dir, m.x - 0.4 * sc, m.y, m.z - 0.4 * sc, m.x + 0.4 * sc, m.y + 1.85 * sc, m.z + 0.4 * sc, bestEntDist);
     if (t >= 0 && t < bestEntDist) { bestEntDist = t; hitMob = m; hitCart = null; }
   }
 
@@ -3385,6 +3669,7 @@ function handleUseOrPlace() {
   }
 
   // 5. Placing a standard block
+  if (brawlWorld) return;
   const { px, py, pz } = target;
   if (py < 1 || py >= CHUNK_HEIGHT) return;
   if (item.id === 14) {
@@ -3424,33 +3709,41 @@ function handleUseOrPlace() {
 }
 
 // What each block turns into when broken (0 = nothing)
-const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 45: 7, 46: 7, 47: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14 };
+const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 45: 7, 46: 7, 47: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14, 48: 48, 49: 49, 50: 50, 51: 51, 52: 52, 53: 53, 54: 54, 55: 55, 56: 56, 57: 57, 58: 58, 59: 59, 60: 60 };
 // Seconds to break by hand
-const HARDNESS = { 1: 0.6, 2: 0.5, 3: 0.4, 4: 2.0, 5: 1.5, 6: 4.0, 7: 0.4, 45: 0.4, 46: 0.4, 47: 0.4, 8: 0.3, 10: 0.25, 11: 0.1, 12: 0.5, 13: 0.5, 14: 0.5, 15: 6.0, 16: 7.0, 17: 9.0 };
-const ORE_DROP = { 15: 26, 16: 27, 17: 28 };
-const ORE_TIER = { 15: 1, 16: 2, 17: 2 };   // iron ore needs any pickaxe, gold and diamonds need iron or better
+const HARDNESS = { 1: 0.6, 2: 0.5, 3: 0.4, 4: 2.0, 5: 1.5, 6: 4.0, 7: 0.4, 45: 0.4, 46: 0.4, 47: 0.4, 8: 0.3, 10: 0.25, 11: 0.1, 12: 0.5, 13: 0.5, 14: 0.5, 15: 6.0, 16: 7.0, 17: 9.0, 61: 5.0, 48: 3.0, 49: 3.0, 50: 0.7, 51: 0.7, 52: 0.3, 53: 15.0, 54: 1.2, 55: 0.5, 56: 0.5, 57: 0.5, 58: 0.5, 59: 1.5, 60: 0.5 };
+const STONEY = new Set([6, 48, 49, 59]);   // pickaxes break these quickly
+const ORE_DROP = { 15: 26, 16: 27, 17: 28, 61: 62 };
+const ORE_TIER = { 15: 1, 16: 2, 17: 2, 61: 1 };   // iron ore needs any pickaxe, gold and diamonds need iron or better
 // tier: what it can mine. stone / ore / other: how fast it breaks those
 const PICKS = {
   24: { tier: 1, stone: 5, ore: 2, other: 2 },    // wooden
   37: { tier: 1, stone: 9, ore: 5, other: 4 },    // gold: fast, but only wood strength
   29: { tier: 2, stone: 8, ore: 4, other: 3 },    // iron
-  42: { tier: 3, stone: 12, ore: 6, other: 5 }    // diamond
+  42: { tier: 3, stone: 12, ore: 6, other: 5 },   // diamond
+  70: { tier: 1, stone: 6, ore: 3, other: 2.5 },  // copper
+  75: { tier: 3, stone: 14, ore: 7, other: 6 },   // obsidian
+  80: { tier: 3, stone: 17, ore: 8, other: 7 }    // netherite
 };
 const AXES = {
   25: { wood: 4, leaf: 2.5, other: 1 },
   33: { wood: 6, leaf: 3.5, other: 1.5 },
   38: { wood: 7, leaf: 4, other: 1.5 },
-  43: { wood: 9, leaf: 5, other: 2 }
+  43: { wood: 9, leaf: 5, other: 2 },
+  71: { wood: 5, leaf: 3, other: 1.2 },
+  76: { wood: 10, leaf: 5.5, other: 2 },
+  81: { wood: 12, leaf: 6.5, other: 2.5 }
 };
 function mineSpeed(id) {
   const pk = PICKS[heldId()], ax = AXES[heldId()];
-  if (pk) return id === 6 ? pk.stone : ORE_DROP[id] ? pk.ore : pk.other;
+  if (pk) return STONEY.has(id) ? pk.stone : ORE_DROP[id] ? pk.ore : pk.other;
   if (ORE_DROP[id]) return 0.5;
   if (ax) return (id === 4 || id === 5) ? ax.wood : (id === 10 || id === 12) ? ax.leaf : ax.other;
   return 1;
 }
 
 function breakBlock(bx, by, bz) {
+  if (brawlWorld) return;
   const id = getBlock(bx, by, bz);
   if (!id || by < 1) return;
   setBlock(bx, by, bz, 0);
@@ -3461,6 +3754,7 @@ function breakBlock(bx, by, bz) {
     else mpToast(ORE_TIER[id] > 1 ? 'You need an iron pickaxe or better to get anything from this' : 'You need a pickaxe to get anything from this');
     return;
   }
+  if (isSurvival() && id === 53 && !(PICKS[heldId()] && PICKS[heldId()].tier >= 3)) { mpToast('You need a diamond pickaxe to get anything from obsidian'); return; }
   if (isSurvival() && DROP_OF[id]) spawnDrop(bx + 0.5, by + 0.35, bz + 0.5, DROP_OF[id], 1);
 }
 
@@ -3623,7 +3917,7 @@ function tickClock() {
   const dt = Math.min(60, Math.max(0, (now - lastClock) / 1000));
   lastClock = now;
   if (!inGame) return;
-  if (!isSurvival()) { worldTime = 0.25; return; }
+  if (!isSurvival() || brawlWorld) { worldTime = 0.25; return; }
   if (isCloud()) {
     const t = (now - currentWorld.epoch) / ((settings.dayLen || 6) * 60000) + 0.08;
     dayCount = 1 + Math.floor(t); worldTime = t - Math.floor(t);
@@ -3635,7 +3929,7 @@ function tickClock() {
 function clockText() {
   const hrs = (6 + worldTime * 24) % 24;
   const h = Math.floor(hrs), m = Math.floor((hrs - h) * 60);
-  const label = isSurvival() ? 'Survival' : 'Creative';
+  const label = brawlWorld ? 'Brawl' : isSurvival() ? 'Survival' : 'Creative';
   return `${label} | Day ${dayCount} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` + (wx.storm > 0.5 ? ' | Thunderstorm' : wx.rain > 0.5 ? ' | Rain' : '') + (wx.lift > 0 ? ' | STRONG WIND' : '') + (saveFailed ? ' | SAVE FAILED (storage full)' : '');
 }
 
@@ -3651,7 +3945,7 @@ function touchingCactus() {
 function damagePlayer(amount, ignoreArmor) {
   if (!isSurvival() || deadTimer > 0 || amount <= 0) return;
   let dmg = amount;
-  if (!ignoreArmor) dmg = amount * (1 - Math.min(0.8, armorPoints() * 0.08));
+  if (!ignoreArmor) { const ap = armorPoints(); dmg = amount * (1 - Math.min(0.92, ap <= 10 ? ap * 0.08 : 0.8 + (ap - 10) * 0.03)); }
   hp = Math.max(0, hp - Math.max(1, Math.round(dmg)));
   lastHurt = 0;
   const f = document.getElementById('flash');
@@ -3666,6 +3960,18 @@ function die() {
   if (ridingCart) dismountCart();
   mouseHeld = false;
   resetMining();
+  if (brawlWorld) {
+    const done = brawl.phase === 'fight' ? brawl.wave - 1 : brawl.wave;
+    const newBest = done > brawl.best;
+    if (newBest) brawl.best = done;
+    deathOutcome = 'brawl';
+    $('deathTitle').textContent = 'Game Over';
+    $('deathMsg').textContent = `You survived ${done} wave${done === 1 ? '' : 's'} with ${brawl.kills} kills.` + (newBest ? ' New best!' : ` Best: ${brawl.best}.`) + ' Starting over...';
+    $('death').style.display = 'flex';
+    saveWorld();
+    renderHearts();
+    return;
+  }
   deaths++;
   let msg;
   if (settings.difficulty === 'hard') {
@@ -3701,6 +4007,7 @@ function die() {
   renderHearts();
 }
 function respawn() {
+  if (deathOutcome === 'brawl') { brawlReset(); document.getElementById('death').style.display = 'none'; return; }
   if (deathOutcome === 'reset') { newWorld(); return; }
   player.x = 8.5; player.z = 8.5;
   player.y = terrainHeight(8, 8) + 3;
@@ -3751,14 +4058,50 @@ gl.bindBuffer(gl.ARRAY_BUFFER, zVbo);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(zVerts), gl.STATIC_DRAW);
 setupAttribs();
 const zVertCount = zVerts.length / 7;
+function buildMobModel(S, SH, P, sc) {
+  const v = [];
+  const s = (a) => a * sc;
+  pushBox(v, s(-0.25), s(1.35), s(-0.25), s(0.25), s(1.85), s(0.25), S, S, S);
+  pushFace(v, 2, s(-0.25), s(1.35), s(-0.25), s(0.25), s(1.85), s(0.254), TILE.Z_FACE);
+  pushBox(v, s(-0.25), s(0.65), s(-0.125), s(0.25), s(1.35), s(0.125), SH, SH, SH);
+  pushBox(v, s(0.25), s(1.02), s(-0.1), s(0.5), s(1.3), s(0.7), S, S, S);
+  pushBox(v, s(-0.5), s(1.02), s(-0.1), s(-0.25), s(1.3), s(0.7), S, S, S);
+  pushBox(v, s(-0.25), 0, s(-0.125), 0, s(0.65), s(0.125), P, P, P);
+  pushBox(v, 0, 0, s(-0.125), s(0.25), s(0.65), s(0.125), P, P, P);
+  const vao = gl.createVertexArray(), vbo = gl.createBuffer();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  setupAttribs();
+  return { vao, count: v.length / 7 };
+}
+const mobModels = {
+  zombie: { vao: zVao, count: zVertCount },
+  runner: buildMobModel(TILE.CLAY, TILE.WOOL_Y, TILE.WOOL_B, 0.85),
+  brute: buildMobModel(TILE.Z_SKIN, TILE.WOOL_R, TILE.OBSIDIAN, 1.35),
+  bomber: buildMobModel(TILE.WOOL_G, TILE.WOOL_G, TILE.LEAVES, 0.95),
+  archer: buildMobModel(TILE.SNOW, TILE.GRAVEL, TILE.COBBLE, 1.0),
+  boss: buildMobModel(TILE.Z_SKIN, TILE.OBSIDIAN, TILE.WOOL_R, 2.0)
+};
+const arrowModel = (() => {
+  const v = [];
+  pushBox(v, -0.04, -0.04, -0.35, 0.04, 0.04, 0.35, TILE.PLANKS, TILE.PLANKS, TILE.PLANKS);
+  pushBox(v, -0.07, -0.07, 0.3, 0.07, 0.07, 0.42, TILE.RAIL, TILE.RAIL, TILE.RAIL);
+  const vao = gl.createVertexArray(), vbo = gl.createBuffer();
+  gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  setupAttribs();
+  return { vao, count: v.length / 7 };
+})();
+const arrows = [];
 
 function makeZombie(x, y, z) {
   return { x, y, z, vx: 0, vy: 0, vz: 0, yaw: Math.random() * 6.28, hp: 12, flash: 0, hitCd: 0, kb: 0,
-           burn: 0, wt: 0, wyaw: 0, moving: false, onGround: false };
+           burn: 0, wt: 0, wyaw: 0, moving: false, onGround: false, type: 'zombie', sc: 1, fuse: 0, shootCd: 1.5 + Math.random() * 1.5, strafe: Math.random() < 0.5 ? 1 : -1, st: 0 };
 }
 function attackMob(m) {
   const hid = heldId();
-  const dmg = (ITEM_DEFS[hid] && ITEM_DEFS[hid].damage) || 2;
+  const dmg = ((ITEM_DEFS[hid] && ITEM_DEFS[hid].damage) || 2) + (brawlWorld ? brawl.perk.dmg : 0);
   m.hp -= dmg;
   m.flash = 0.25;
   const dx = m.x - player.x, dz = m.z - player.z, d = Math.hypot(dx, dz) || 1;
@@ -3768,9 +4111,11 @@ function attackMob(m) {
 function killMob(m) {
   const i = mobs.indexOf(m);
   if (i >= 0) mobs.splice(i, 1);
+  if (brawlWorld) { brawlKill(m); return; }
   if (isSurvival()) {
     if (Math.random() < 0.7) spawnDrop(m.x, m.y + 0.6, m.z, 20, 1 + Math.floor(Math.random() * 2));
     if (Math.random() < 0.3) spawnDrop(m.x, m.y + 0.6, m.z, 5, 1);
+    if (Math.random() < 0.45) spawnDrop(m.x, m.y + 0.6, m.z, 63, 1);
   }
 }
 function canSeeSky(m) {
@@ -3780,6 +4125,7 @@ function canSeeSky(m) {
 
 let spawnTimer = 0;
 function updateSpawning(dt) {
+  if (brawlWorld) return;
   if (!isSurvival() || !settings.mobs || settings.difficulty === 'peaceful' || deadTimer > 0) return;
   spawnTimer -= dt;
   if (spawnTimer > 0) return;
@@ -3809,7 +4155,7 @@ function updateMobs(dt) {
     m.kb -= dt;
 
     // Zombies burn in daylight when they can see the sky
-    if (dayL > 0.75 && canSeeSky(m)) {
+    if (!brawlWorld && dayL > 0.75 && canSeeSky(m)) {
       m.burn += dt;
       if (m.burn >= 1) {
         m.burn = 0; m.hp -= 2; m.flash = 0.25;
@@ -3817,9 +4163,9 @@ function updateMobs(dt) {
       }
     }
 
-    const chase = isSurvival() && deadTimer <= 0 && pd < 24;
+    const chase = isSurvival() && deadTimer <= 0 && (pd < 24 || brawlWorld);
     if (m.kb <= 0) {
-      let dirX = 0, dirZ = 0, speed = hard ? 3.0 : 2.4;
+      let dirX = 0, dirZ = 0, speed = m.speed || (hard ? 3.0 : 2.4);
       if (chase && pd > 0.05) {
         dirX = (player.x - m.x) / pd; dirZ = (player.z - m.z) / pd;
         m.yaw = Math.atan2(dirX, dirZ);
@@ -3828,6 +4174,14 @@ function updateMobs(dt) {
         if (m.wt <= 0) { m.wt = 2 + Math.random() * 3; m.wyaw = Math.random() * Math.PI * 2; m.moving = Math.random() < 0.6; }
         if (m.moving) { dirX = Math.sin(m.wyaw); dirZ = Math.cos(m.wyaw); m.yaw = m.wyaw; speed *= 0.5; }
       }
+      if (brawlWorld && chase && pd > 0.05) {
+        if (m.type === 'archer') {
+          const tx = (player.x - m.x) / pd, tz = (player.z - m.z) / pd;
+          m.st -= dt; if (m.st <= 0) { m.st = 1.5 + Math.random() * 2; m.strafe = -m.strafe; }
+          if (pd > 11) { dirX = tx; dirZ = tz; } else if (pd < 7) { dirX = -tx; dirZ = -tz; } else { dirX = -tz * m.strafe; dirZ = tx * m.strafe; }
+          m.yaw = Math.atan2(tx, tz);
+        } else if (m.type === 'bomber' && m.fuse > 0) { dirX = 0; dirZ = 0; }
+      }
       m.vx = dirX * speed; m.vz = dirZ * speed;
       if (m.onGround && (dirX || dirZ) && isSolidAt(m.x + dirX * 0.6, m.y + 0.3, m.z + dirZ * 0.6)) m.vy = 7.6;
     } else {
@@ -3835,26 +4189,241 @@ function updateMobs(dt) {
       m.vx *= f; m.vz *= f;
     }
     m.vy -= 24 * dt;
-    collideBody(m, dt, 0.3, 1.8);
+    collideBody(m, dt, 0.3 * (m.sc || 1), 1.8 * (m.sc || 1));
     m.impact = 0;
 
-    if (chase && pd < 1.1 && Math.abs(player.y - m.y) < 1.5 && m.hitCd <= 0) {
-      m.hitCd = 1.0;
-      damagePlayer(hard ? 6 : 4, false);
+    if (brawlWorld && chase) {
+      if (m.type === 'archer') {
+        m.shootCd -= dt;
+        if (m.shootCd <= 0 && pd < 24) { brawlShoot(m); m.shootCd = 2.0 + Math.random() * 0.8; }
+      } else if (m.type === 'bomber') {
+        if (m.fuse > 0) {
+          m.fuse -= dt; m.flash = (Math.floor(m.fuse * 10) % 2) ? 0.3 : 0;
+          if (m.fuse <= 0) {
+            if (pd < 3.6) {
+              damagePlayer(Math.round(9 * (1 + 0.04 * (brawl.wave - 1))), false);
+              const ex = player.x - m.x, ez = player.z - m.z, ed = Math.hypot(ex, ez) || 1;
+              player.vx += ex / ed * 9; player.vz += ez / ed * 9; player.vy = 6;
+            }
+            mobs.splice(i, 1); continue;
+          }
+        } else if (pd < 2.4) m.fuse = 1.1;
+      }
+    }
+    if (m.type !== 'archer' && m.type !== 'bomber' && chase && pd < 1.1 * (m.sc || 1) && Math.abs(player.y - m.y) < 1.5 && m.hitCd <= 0) {
+      m.hitCd = m.type === 'runner' ? 0.8 : 1.0;
+      damagePlayer(m.dmg || (hard ? 6 : 4), false);
+    }
+  }
+  if (brawlWorld) {
+    // keep the crowd from stacking into one blob
+    for (let a = 0; a < mobs.length; a++) for (let b = a + 1; b < mobs.length; b++) {
+      const A = mobs[a], B = mobs[b];
+      const dx = B.x - A.x, dz = B.z - A.z, d = Math.hypot(dx, dz), min = 0.6 * ((A.sc || 1) + (B.sc || 1));
+      if (d < min && d > 0.001) {
+        const push = (min - d) / 2 * Math.min(1, dt * 8) / d;
+        A.x -= dx * push; A.z -= dz * push; B.x += dx * push; B.z += dz * push;
+      }
     }
   }
 }
+
+
+// ---------- Brawl: waves of mobs in a closed arena ----------
+const brawl = { wave: 0, phase: 'break', timer: 10, queue: [], spawnT: 0, points: 0, kills: 0, best: 0, hudKey: '', perk: { dmg: 0, hp: 0, spd: 0 } };
+const BRAWL_MOBS = {
+  zombie: { hp: 12, speed: 2.4, dmg: 4, sc: 1, pts: 5 },
+  runner: { hp: 7, speed: 4.0, dmg: 3, sc: 0.85, pts: 7 },
+  brute:  { hp: 45, speed: 1.7, dmg: 8, sc: 1.35, pts: 20 },
+  bomber: { hp: 10, speed: 3.3, dmg: 9, sc: 0.95, pts: 9 },
+  archer: { hp: 9, speed: 2.2, dmg: 5, sc: 1, pts: 12 },
+  boss:   { hp: 320, speed: 1.6, dmg: 14, sc: 2.0, pts: 150 }
+};
+function brawlShoot(m) {
+  const ox = m.x, oy = m.y + 1.5, oz = m.z;
+  const dx = player.x - ox, dz = player.z - oz, dist = Math.hypot(dx, dz) || 1, sp = 16, t = dist / sp, g = 8;
+  const ty = player.y + 1.0;
+  arrows.push({ x: ox, y: oy, z: oz, vx: dx / dist * sp, vz: dz / dist * sp, vy: (ty - oy + 0.5 * g * t * t) / t, age: 0, dmg: Math.round(5 * (1 + 0.04 * (brawl.wave - 1))) });
+}
+function updateArrows(dt) {
+  for (let i = arrows.length - 1; i >= 0; i--) {
+    const a = arrows[i];
+    a.vy -= 8 * dt; a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt; a.age += dt;
+    let dead = a.age > 4 || isSolidAt(a.x, a.y, a.z);
+    if (!dead && deadTimer <= 0 && Math.abs(a.x - player.x) < 0.45 && Math.abs(a.z - player.z) < 0.45 && a.y > player.y - 0.1 && a.y < player.y + 1.85) {
+      damagePlayer(a.dmg, false); dead = true;
+    }
+    if (dead) arrows.splice(i, 1);
+  }
+}
+function brawlBanner(text) {
+  const el = $('brawlBanner');
+  el.textContent = text; el.style.display = 'block'; el.style.opacity = 1;
+  clearTimeout(brawlBanner.t1); clearTimeout(brawlBanner.t2);
+  brawlBanner.t1 = setTimeout(() => { el.style.opacity = 0; }, 1800);
+  brawlBanner.t2 = setTimeout(() => { el.style.display = 'none'; }, 2500);
+}
+function brawlReset() {
+  mobs.length = 0; drops.length = 0;
+  for (let i = 0; i < 36; i++) inv[i] = emptySlot();
+  inv[0] = { id: 21, count: 1 };
+  armor.head = 0; armor.chest = 0; selectedSlot = 0;
+  maxHp = 20; hp = 20; deaths = 0; deadTimer = 0; lastHurt = 99;
+  player.x = 10.5; player.z = 10.5; player.y = 21; player.vx = player.vy = player.vz = 0; player.yaw = 0; player.pitch = -0.2;
+  Object.assign(brawl, { wave: 0, phase: 'break', timer: 10, queue: [], spawnT: 0, points: 0, kills: 0, hudKey: '', perk: { dmg: 0, hp: 0, spd: 0 } });
+  arrows.length = 0;
+  renderHotbar(); renderHearts();
+  brawlBanner('Get ready!');
+}
+function brawlStartWave() {
+  brawl.wave++;
+  const w = brawl.wave;
+  const list = [];
+  const add = (type, n) => { for (let i = 0; i < n; i++) list.push(type); };
+  add('zombie', 3 + 2 * w);
+  if (w >= 3) add('runner', Math.min(12, w - 1));
+  if (w >= 4) add('bomber', Math.min(8, Math.floor((w - 2) / 2)));
+  if (w >= 5) add('brute', Math.min(8, Math.floor((w - 3) / 2)) + (w % 5 === 0 ? 2 : 0));
+  if (w >= 6) add('archer', Math.min(6, Math.floor((w - 4) / 2)));
+  if (w % 10 === 0) add('boss', w / 10);
+  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  brawl.queue = list; brawl.spawnT = 0; brawl.phase = 'fight';
+  if (screen === 'shop') closeScreen();
+  brawlBanner(w % 10 === 0 ? 'BOSS WAVE ' + w : 'WAVE ' + w);
+}
+function brawlSpawn(type) {
+  const def = BRAWL_MOBS[type], w = brawl.wave;
+  let x = 10, z = 10;
+  for (let tries = 0; tries < 10; tries++) {
+    const side = Math.floor(Math.random() * 4), t = 1.5 + Math.random() * 17;
+    x = side === 0 ? 1.5 : side === 1 ? 18.5 : t; z = side === 2 ? 1.5 : side === 3 ? 18.5 : t;
+    if (Math.hypot(x - player.x, z - player.z) > 7) break;
+  }
+  const m = makeZombie(x, 21, z);
+  m.type = type; m.sc = def.sc; m.speed = def.speed * Math.min(1.5, 1 + 0.015 * (w - 1));
+  m.hp = Math.round(def.hp * (1 + 0.1 * (w - 1)));
+  m.dmg = Math.round(def.dmg * (1 + 0.04 * (w - 1)));
+  m.pts = def.pts;
+  mobs.push(m);
+}
+function brawlKill(m) {
+  brawl.kills++; brawl.points += m.pts || 5;
+  if (Math.random() < 0.12 && hp < maxHp) { hp = Math.min(maxHp, hp + 2); renderHearts(); mpToast('+1 heart'); }
+}
+function brawlTick(dt) {
+  if (!brawlWorld) return;
+  updateArrows(dt);
+  if (deadTimer <= 0) {
+    if (brawl.phase === 'break') {
+      brawl.timer -= dt;
+      if (brawl.timer <= 0) brawlStartWave();
+    } else {
+      brawl.spawnT -= dt;
+      const cap = Math.min(8 + brawl.wave, 20);
+      if (brawl.queue.length && brawl.spawnT <= 0 && mobs.length < cap) {
+        brawlSpawn(brawl.queue.pop());
+        brawl.spawnT = Math.max(0.5, 1.4 - 0.05 * brawl.wave);
+      }
+      if (!brawl.queue.length && mobs.length === 0) {
+        const bonus = 10 + 5 * brawl.wave;
+        brawl.points += bonus;
+        hp = Math.min(maxHp, hp + 6); renderHearts();
+        brawl.phase = 'break'; brawl.timer = 20; arrows.length = 0;
+        if (brawl.wave > brawl.best) { brawl.best = brawl.wave; saveWorld(); }
+        brawlBanner('Wave ' + brawl.wave + ' cleared! +' + bonus);
+      }
+    }
+  }
+  const left = brawl.queue.length + mobs.length;
+  const top = `WAVE ${brawl.wave || 1} &nbsp;·&nbsp; <b>${brawl.points}</b> points &nbsp;·&nbsp; Best wave ${brawl.best}`;
+  const sub = brawl.phase === 'break'
+    ? `${brawl.wave ? 'Next wave' : 'First wave'} in ${Math.max(0, Math.ceil(brawl.timer))}s`
+    : `Mobs left: ${left}`;
+  const key = top + sub + brawl.phase;
+  if (key !== brawl.hudKey) {
+    brawl.hudKey = key;
+    $('bhTop').innerHTML = top; $('bhSub').textContent = sub;
+    $('bhShop').style.display = brawl.phase === 'break' ? 'inline-block' : 'none';
+    $('brawlHud').style.display = 'block';
+  }
+}
+// ----- shop -----
+const PERKS = [
+  { key: 'dmg', name: 'Sharpness', note: '+1 damage with every weapon', base: 60, icon: () => TILE.I_SWORD },
+  { key: 'hp', name: 'Fitness', note: '+1 heart of max health', base: 80, icon: () => TILE.DIAMOND_ICON },
+  { key: 'spd', name: 'Swiftness', note: '+6% move speed', base: 70, icon: () => TILE.GOLD_ICON }
+];
+const PERK_MAX = 5;
+const SWORD_TIER = { 21: 0, 67: 1, 30: 2, 39: 3, 72: 4, 77: 5 };
+const ARMOR_TIER = { 65: 0, 66: 0, 22: 1, 23: 1, 68: 2, 69: 2, 31: 3, 32: 3, 40: 4, 41: 4, 73: 5, 74: 5, 78: 6, 79: 6 };
+const SHOP_ITEMS = [
+  { item: 67, cost: 90, kind: 'sword', tier: 1, note: '5 damage' },
+  { item: 30, cost: 150, kind: 'sword', tier: 2, note: '6 damage' },
+  { item: 39, cost: 700, kind: 'sword', tier: 3, note: '8 damage' },
+  { item: 72, cost: 1400, kind: 'sword', tier: 4, note: '9 damage' },
+  { item: 77, cost: 2800, kind: 'sword', tier: 5, note: '11 damage' },
+  { item: 65, cost: 15, kind: 'head', tier: 0, note: 'armor 1' },
+  { item: 22, cost: 40, kind: 'head', tier: 1, note: 'armor 2' },
+  { item: 68, cost: 70, kind: 'head', tier: 2, note: 'armor 2' },
+  { item: 31, cost: 120, kind: 'head', tier: 3, note: 'armor 3' },
+  { item: 40, cost: 450, kind: 'head', tier: 4, note: 'armor 4' },
+  { item: 73, cost: 900, kind: 'head', tier: 5, note: 'armor 5' },
+  { item: 78, cost: 1800, kind: 'head', tier: 6, note: 'armor 6' },
+  { item: 66, cost: 25, kind: 'chest', tier: 0, note: 'armor 3' },
+  { item: 23, cost: 60, kind: 'chest', tier: 1, note: 'armor 4' },
+  { item: 69, cost: 110, kind: 'chest', tier: 2, note: 'armor 5' },
+  { item: 32, cost: 200, kind: 'chest', tier: 3, note: 'armor 6' },
+  { item: 41, cost: 800, kind: 'chest', tier: 4, note: 'armor 8' },
+  { item: 74, cost: 1500, kind: 'chest', tier: 5, note: 'armor 8' },
+  { item: 79, cost: 3000, kind: 'chest', tier: 6, note: 'armor 10' }
+];
+function brawlSwordTier() { let t = -1; for (const s of inv) if (s.id in SWORD_TIER) t = Math.max(t, SWORD_TIER[s.id]); return t; }
+function brawlOpenShop() { openScreen('shop'); renderShop(); }
+function renderShop() {
+  $('shopPts').textContent = `Points: ${brawl.points}   ·   Health: ${Math.ceil(hp / 2)} / ${maxHp / 2} hearts`;
+  const list = $('shopList'); list.textContent = '';
+  const row = (iconTile, name, note, cost, owned, fn) => {
+    const r = document.createElement('div'); r.className = 'shoprow';
+    const img = document.createElement('img'); img.src = tileIconURL(iconTile);
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = name;
+    const sp = document.createElement('span'); sp.textContent = note; nm.appendChild(sp);
+    const btn = document.createElement('button'); btn.className = 'btn';
+    if (owned) { btn.textContent = 'Have it'; btn.disabled = true; r.classList.add('no'); }
+    else { btn.textContent = cost + ' pts'; if (brawl.points < cost) { btn.disabled = true; r.classList.add('no'); } btn.onclick = () => { fn(); renderShop(); }; }
+    r.append(img, nm, btn); list.appendChild(r);
+  };
+  row(TILE.DIAMOND_ICON, 'Heal to full', 'Refill every heart', 25, hp >= maxHp, () => { brawl.points -= 25; hp = maxHp; renderHearts(); });
+  for (const pk of PERKS) {
+    const lvl = brawl.perk[pk.key], cost = pk.base * (lvl + 1);
+    row(pk.icon(), `${pk.name} ${lvl}/${PERK_MAX}`, pk.note, cost, lvl >= PERK_MAX, () => {
+      brawl.points -= cost; brawl.perk[pk.key]++;
+      if (pk.key === 'hp') { maxHp += 2; hp += 2; renderHearts(); }
+    });
+  }
+  for (const it of SHOP_ITEMS) {
+    const info = itemInfo(it.item);
+    const have = it.kind === 'sword' ? brawlSwordTier() >= it.tier : (armor[it.kind] in ARMOR_TIER ? ARMOR_TIER[armor[it.kind]] >= it.tier : false);
+    row(info.icon, info.name, it.note, it.cost, have, () => {
+      brawl.points -= it.cost;
+      if (it.kind === 'sword') { let k = inv.findIndex(s => s.id in SWORD_TIER); if (k < 0) k = 0; inv[k] = { id: it.item, count: 1 }; }
+      else armor[it.kind] = it.item;
+      renderHotbar(); renderHearts();
+    });
+  }
+}
+$('bhShop').onclick = (e) => { e.stopPropagation(); if (brawlWorld && brawl.phase === 'break') brawlOpenShop(); };
+$('shopClose').onclick = () => closeScreen();
+$('shopStart').onclick = () => { if (brawlWorld && brawl.phase === 'break') brawlStartWave(); closeScreen(); };
 
 // Minecart Physics & Track Following
 function updateMinecarts(dt) {
   for (const cart of minecarts) {
     const bx = Math.floor(cart.x);
-    const by = Math.floor(cart.y + 0.1);
     const bz = Math.floor(cart.z);
-    const blockHere = getBlock(bx, by, bz);
-    const blockBelow = getBlock(bx, by - 1, bz);
-
-    const onTrack = (blockHere === 8);
+    let by = Math.floor(cart.y + 0.1);
+    if (getBlock(bx, by, bz) !== 8 && getBlock(bx, by - 1, bz) === 8) by--;
+    const onTrack = (getBlock(bx, by, bz) === 8);
+    let probe = 0.3;
 
     // Player driving input while riding
     if (cart === ridingCart) {
@@ -3881,41 +4450,35 @@ function updateMinecarts(dt) {
     }
 
     if (onTrack) {
-      cart.y = by + 0.08;
+      const info = railInfo(bx, by, bz);
+      if (info.kind === 'slope') probe = 0.8;
       cart.vy = 0;
-
-      const tPx = getBlock(bx + 1, by, bz) === 8;
-      const tNx = getBlock(bx - 1, by, bz) === 8;
-      const tPz = getBlock(bx, by, bz + 1) === 8;
-      const tNz = getBlock(bx, by, bz - 1) === 8;
-
-      const trackX = tPx || tNx;
-      const trackZ = tPz || tNz;
-
-      // Constrain velocity and center onto rail axis
-      if (trackX && !trackZ) {
+      const lerpK = Math.min(1, dt * 15);
+      if (info.kind === 'curve') {
+        cart.y = by + 0.08;
+        const cx = bx + 0.5 + info.sx * 0.5, cz = bz + 0.5 + info.sz * 0.5;
+        const rx = cart.x - cx, rz = cart.z - cz, rl = Math.hypot(rx, rz) || 0.5;
+        cart.x = cx + rx + (rx / rl * 0.5 - rx) * lerpK;
+        cart.z = cz + rz + (rz / rl * 0.5 - rz) * lerpK;
+        const tx = -rz / rl, tz = rx / rl;
+        const sp = cart.vx * tx + cart.vz * tz;
+        cart.vx = tx * sp; cart.vz = tz * sp;
+      } else if (info.axis === 'x') {
         cart.vz = 0;
-        cart.z += ((bz + 0.5) - cart.z) * Math.min(1, dt * 15);
-      } else if (trackZ && !trackX) {
+        cart.z += ((bz + 0.5) - cart.z) * lerpK;
+        if (info.kind === 'slope') {
+          const f = cart.x - bx;
+          cart.y = by + (info.dir > 0 ? f : 1 - f) + 0.08;
+          cart.vx -= info.dir * 9.0 * dt;
+        } else cart.y = by + 0.08;
+      } else {
         cart.vx = 0;
-        cart.x += ((bx + 0.5) - cart.x) * Math.min(1, dt * 15);
-      } else if (trackX && trackZ) {
-        // Corner / junction: redirect momentum along the open track branch
-        const cx = bx + 0.5, cz = bz + 0.5;
-        if (Math.abs(cart.x - cx) < 0.25 && Math.abs(cart.z - cz) < 0.25) {
-          const speed = Math.hypot(cart.vx, cart.vz);
-          if (Math.abs(cart.vx) > Math.abs(cart.vz)) {
-            if ((cart.vx > 0 && !tPx) || (cart.vx < 0 && !tNx)) {
-              cart.vx = 0;
-              cart.vz = tPz ? speed : (tNz ? -speed : 0);
-            }
-          } else {
-            if ((cart.vz > 0 && !tPz) || (cart.vz < 0 && !tNz)) {
-              cart.vz = 0;
-              cart.vx = tPx ? speed : (tNx ? -speed : 0);
-            }
-          }
-        }
+        cart.x += ((bx + 0.5) - cart.x) * lerpK;
+        if (info.kind === 'slope') {
+          const f = cart.z - bz;
+          cart.y = by + (info.dir > 0 ? f : 1 - f) + 0.08;
+          cart.vz -= info.dir * 9.0 * dt;
+        } else cart.y = by + 0.08;
       }
 
       // Low rolling friction on tracks so rides glide smoothly
@@ -3946,14 +4509,14 @@ function updateMinecarts(dt) {
 
     // Move & block-wall bounce
     const nextX = cart.x + cart.vx * dt;
-    if (isSolidAt(nextX + Math.sign(cart.vx) * 0.4, cart.y + 0.3, cart.z)) {
+    if (isSolidAt(nextX + Math.sign(cart.vx) * 0.4, cart.y + probe, cart.z)) {
       cart.vx = 0;
     } else {
       cart.x = nextX;
     }
 
     const nextZ = cart.z + cart.vz * dt;
-    if (isSolidAt(cart.x, cart.y + 0.3, nextZ + Math.sign(cart.vz) * 0.4)) {
+    if (isSolidAt(cart.x, cart.y + probe, nextZ + Math.sign(cart.vz) * 0.4)) {
       cart.vz = 0;
     } else {
       cart.z = nextZ;
@@ -4044,7 +4607,7 @@ function weatherTick(dt, active) {
   const now = Date.now();
   const key = currentWorld ? String(currentWorld.rid || currentWorld.id) : 'x';
   if (wxSaltFor !== key) { wxSaltFor = key; let s = 7; for (const c of key) s = Math.imul(s ^ c.charCodeAt(0), 16777619); wxSalt = s; }
-  let st = settings.weather === false ? 0 : wxPlan(now);
+  let st = (settings.weather === false || brawlWorld) ? 0 : wxPlan(now);
   if (WX_DEBUG.state !== null) st = WX_DEBUG.state;
   const tr = st >= 1 ? 1 : 0, ts = st >= 2 ? 1 : 0;
   if (wx.init !== key) { wx.init = key; wx.rain = tr; wx.storm = ts; wx.bolt = null; wx.boltIn = 6 + Math.random() * 8; }
@@ -4199,7 +4762,7 @@ function loop(now) {
       player.y += vy * speed * dt;
       player.z += vz * speed * dt;
     } else {
-      const speed = 6.2;
+      const speed = 6.2 * (brawlWorld ? 1 + 0.06 * brawl.perk.spd : 1);
       let mx = fwdX * moveF + rightX * moveR;
       let mz = fwdZ * moveF + rightZ * moveR;
       const len = Math.hypot(mx, mz);
@@ -4230,10 +4793,11 @@ function loop(now) {
   }
 
   tickClock();
-  const simulate = locked || screen === 'inv';
+  const simulate = locked || (screen === 'inv' && isShared());   // solo worlds pause while the inventory is open
   if (simulate) {
     updateSurvival(dt);
     updateSpawning(dt);
+    brawlTick(dt);
     updateMinecarts(dt);
     updateMobs(dt);
     updateDrops(dt);
@@ -4328,14 +4892,23 @@ function loop(now) {
   }
 
   // Draw Zombies
-  gl.bindVertexArray(zVao);
   for (const m of mobs) {
+    const mm = mobModels[m.type] || mobModels.zombie;
+    gl.bindVertexArray(mm.vao);
     gl.uniform3f(uOffsetLoc, m.x, m.y, m.z);
     gl.uniform1f(uYawLoc, m.yaw);
     gl.uniform1f(uFlashLoc, m.flash > 0 ? 0.5 : 0);
-    gl.drawArrays(gl.TRIANGLES, 0, zVertCount);
+    gl.drawArrays(gl.TRIANGLES, 0, mm.count);
   }
   gl.uniform1f(uFlashLoc, 0);
+  if (arrows.length) {
+    gl.bindVertexArray(arrowModel.vao);
+    for (const a of arrows) {
+      gl.uniform3f(uOffsetLoc, a.x, a.y, a.z);
+      gl.uniform1f(uYawLoc, Math.atan2(a.vx, a.vz));
+      gl.drawArrays(gl.TRIANGLES, 0, arrowModel.count);
+    }
+  }
 
   // Draw collectible drops
   for (const d of drops) {
