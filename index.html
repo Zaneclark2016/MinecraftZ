@@ -888,7 +888,7 @@ if (!settings.name) settings.name = 'Player' + (1000 + Math.floor(Math.random() 
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 
 // ---------- WebSocket relay: a drop-in replacement for the WebRTC peer connection ----------
-const DEFAULT_RELAY = 'wss://minecraftz.onrender.com';
+const DEFAULT_RELAY = ''; // Blank means use PeerJS directly; set a relay URL in Settings to use a custom relay.
 const relayUrl = () => (settings.relay || DEFAULT_RELAY || '').trim();
 class WSConn {
   constructor(peer, cid, remote) {
