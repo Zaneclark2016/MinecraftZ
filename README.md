@@ -4,6 +4,6 @@ v.33:
 - New crafting setup, right click to place only one
 - Weather with rain, thunderstorms, and strong wind. Take cover before you get struck by lightning!
 - Working on water and lava
-- Also working on this with a duo now, better for me
+- Also working on this with a trio now, better for me
 
 Have fun!
