@@ -3940,7 +3940,7 @@ function handleUseOrPlace() {
       spawnY = target.by + 0.08;
       spawnZ = target.bz + 0.5;
     }
-    minecarts.push({ x: spawnX, y: spawnY, z: spawnZ, vx: 0, vy: 0, vz: 0 });
+    minecarts.push({ x: spawnX, y: spawnY, z: spawnZ, vx: 0, vy: 0, vz: 0, trainAhead: null });
     consumeHeld();
     return;
   }
@@ -4038,6 +4038,9 @@ function breakBlock(bx, by, bz) {
 function removeCart(cart) {
   const idx = minecarts.indexOf(cart);
   if (idx !== -1) minecarts.splice(idx, 1);
+  // Removing a cart breaks the connection on both sides.
+  for (const other of minecarts) if (other.trainAhead === cart) other.trainAhead = null;
+  cart.trainAhead = null;
   if (isSurvival()) spawnDrop(cart.x, cart.y + 0.4, cart.z, 9, 1);
 }
 
@@ -4705,7 +4708,32 @@ $('shopStart').onclick = () => { if (brawlWorld && brawl.phase === 'break') braw
 
 // Minecart Physics & Track Following
 function updateMinecarts(dt) {
+  const onRail = (c) => {
+    const x = Math.floor(c.x), z = Math.floor(c.z);
+    let y = Math.floor(c.y + 0.1);
+    if (getBlock(x, y, z) !== 8 && getBlock(x, y - 1, z) === 8) y--;
+    return getBlock(x, y, z) === 8;
+  };
+
+  // Couple adjacent carts. A cart already following another can still pull
+  // the next cart in the line, allowing trains of any reasonable length.
+  for (let i = 0; i < minecarts.length; i++) {
+    for (let j = i + 1; j < minecarts.length; j++) {
+      const a = minecarts[i], b = minecarts[j];
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 0.72 || dist > 1.35 || !onRail(a) || !onRail(b)) continue;
+      if (a.trainAhead === b || b.trainAhead === a) continue;
+      if (b.trainAhead === null) {
+        b.trainAhead = a;
+      } else if (a.trainAhead === null && b.trainAhead) {
+        a.trainAhead = b;
+      }
+    }
+  }
+
   for (const cart of minecarts) {
+    if (cart.trainAhead && minecarts.includes(cart.trainAhead)) continue;
     const bx = Math.floor(cart.x);
     const bz = Math.floor(cart.z);
     let by = Math.floor(cart.y + 0.1);
@@ -4808,6 +4836,41 @@ function updateMinecarts(dt) {
       cart.vz = 0;
     } else {
       cart.z = nextZ;
+    }
+  }
+
+  // Place followers behind their lead cart in train order. Multiple passes
+  // let each cart use the already-updated position of the cart ahead of it.
+  for (let pass = 0; pass < minecarts.length; pass++) {
+    for (const cart of minecarts) {
+      const ahead = cart.trainAhead;
+      if (!ahead || !minecarts.includes(ahead)) continue;
+      let dx = ahead.vx, dz = ahead.vz;
+      let speed = Math.hypot(dx, dz);
+      if (speed < 0.08) {
+        dx = ahead.x - cart.x;
+        dz = ahead.z - cart.z;
+        speed = Math.hypot(dx, dz) || 1;
+      }
+      dx /= speed; dz /= speed;
+      cart.x = ahead.x - dx * 1.0;
+      cart.z = ahead.z - dz * 1.0;
+      cart.y = ahead.y;
+      cart.vx = ahead.vx; cart.vy = ahead.vy; cart.vz = ahead.vz;
+
+      const bx = Math.floor(cart.x), bz = Math.floor(cart.z);
+      let by = Math.floor(cart.y + 0.1);
+      if (getBlock(bx, by, bz) !== 8 && getBlock(bx, by - 1, bz) === 8) by--;
+      if (getBlock(bx, by, bz) === 8) {
+        const info = railInfo(bx, by, bz);
+        if (info.kind === 'slope' && info.axis === 'x') {
+          const f = cart.x - bx;
+          cart.y = by + (info.dir > 0 ? f : 1 - f) + 0.08;
+        } else if (info.kind === 'slope' && info.axis === 'z') {
+          const f = cart.z - bz;
+          cart.y = by + (info.dir > 0 ? f : 1 - f) + 0.08;
+        } else cart.y = by + 0.08;
+      }
     }
   }
 
