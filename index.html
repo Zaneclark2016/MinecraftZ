@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ</title>
+<title>MinecraftZ v21 - Worlds &amp; Multiplayer</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -74,6 +74,8 @@
   .row select { background: #444; color: #fff; border: 1px solid #888; padding: 4px; border-radius: 4px; }
   .row .val { width: 44px; text-align: right; color: #ffd166; }
   .row.off { opacity: 0.4; }
+  #fluidTint { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+  #airBar { position: fixed; bottom: 124px; left: 50%; transform: translateX(-50%); width: 400px; text-align: right; color: #8cd4ff; font-size: 16px; letter-spacing: 1px; pointer-events: none; text-shadow: 0 0 2px #000; }
   #hearts { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); display: none; gap: 1px; align-items: center; pointer-events: none; width: 400px; }
   #hearts .h { font-size: 20px; line-height: 20px; color: #3a1a1a; text-shadow: 0 0 2px #000; }
   #hearts .h.full { color: #e33; }
@@ -241,6 +243,8 @@
     <div class="row"><span>Mode</span><span id="sModeText" style="color:#ffd166"></span></div>
     <div class="hint">Mode is chosen when a world is created. In someone else's world, the host's mode applies.</div>
     <div class="row"><span>Multiplayer (join others in the same seed)</span><input type="checkbox" id="sOnline"></div>
+    <div class="row"><span>Relay server (WebSocket)</span><input type="text" id="sRelay" placeholder="wss://your-relay.onrender.com" style="width:230px"></div>
+    <div class="hint">Multiplayer and friends connect through this WebSocket relay, which works on school networks. Everyone playing together needs the same address. Leave it blank to use the old direct connection.</div>
     <div class="row"><span>Difficulty</span><select id="sDiff"><option value="peaceful">Peaceful</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
     <div class="hint">Difficulty, mobs and day length are set when the world is created and can't be changed here. Normal: each death lowers your max hearts (4, then 2, then 1), then you die for real and start over. Hard: one death erases everything. In a shared world, a reset only clears your own inventory and health.</div>
     <div class="row" id="rowMobs"><span>Mobs (Survival)</span><input type="checkbox" id="sMobs"></div>
@@ -269,7 +273,7 @@
   </div>
 </div>
 <img id="cursorItem" alt="">
-<div id="hearts"></div>
+<div id="hearts"></div><div id="fluidTint"></div><div id="airBar"></div>
 <div id="tags"></div><div id="signLayer"></div>
 <div id="toasts"></div><div id="cloudDot"></div>
 <div id="mineBar"><div></div></div>
@@ -303,7 +307,7 @@ const gl = canvas.getContext('webgl2', { antialias: false });
 if (!gl) alert('WebGL2 is required to run MinecraftZ.');
 
 // Texture Atlas (16x16 pixel tiles, painted procedurally)
-const T = 16, COLS = 8, ROWS = 12;
+const T = 16, COLS = 8, ROWS = 13;
 const TILE = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, GLASS: 3, LOG_SIDE: 4, LOG_TOP: 5, PLANKS: 6, STONE: 7,
   LEAVES: 8, LADDER_WOOD: 9, TIE: 10, RAIL: 11, CART_OUT: 12, CART_IN: 13, WHEEL: 14, BLACK: 15,
@@ -321,8 +325,17 @@ const TILE = {
   COPPER_ORE: 75, COPPER_ICON: 76, LEATHER_ICON: 77, NETH_ICON: 78, L_HELM: 79, L_CHEST: 80,
   C_SWORD: 81, C_HELM: 82, C_CHEST: 83, C_PICK: 84, C_AXE: 85,
   O_SWORD: 86, O_HELM: 87, O_CHEST: 88, O_PICK: 89, O_AXE: 90,
-  N_SWORD: 91, N_HELM: 92, N_CHEST: 93, N_PICK: 94, N_AXE: 95
+  N_SWORD: 91, N_HELM: 92, N_CHEST: 93, N_PICK: 94, N_AXE: 95,
+  WATER: 96, LAVA: 97, BUCKET: 98, WBUCKET: 99, LBUCKET: 100
 };
+// Fluids: 90 water source, 91-97 flowing water (distance from the source), 98 falling water;
+// 100 lava source, 101-103 flowing lava, 104 falling lava
+const isWater = (id) => id >= 90 && id <= 98;
+const isLava = (id) => id >= 100 && id <= 104;
+const isFluid = (id) => isWater(id) || isLava(id);
+const isFluidSource = (id) => id === 90 || id === 100;
+const fluidDist = (id) => (id === 90 || id === 98 || id === 100 || id === 104) ? 0 : (id <= 97 ? id - 90 : id - 100);
+
 
 const atlasCanvas = document.createElement('canvas');
 atlasCanvas.width = COLS * T;
@@ -598,6 +611,15 @@ atlasCanvas.height = ROWS * T;
   oreTile(TILE.GOLD_ORE, [250, 222, 55], [225, 170, 20]);
   oreTile(TILE.DIAMOND_ORE, [95, 238, 232], [40, 190, 200]);
   oreTile(TILE.COPPER_ORE, [226, 142, 92], [64, 190, 150]);
+  paint(TILE.WATER, (x, y) => { const w = Math.sin((x + y * 0.7) * 0.9) * 0.5 + Math.sin(y * 1.3 + x * 0.3) * 0.5; const n = jit(5); return [38 + w * 14 + n, 100 + w * 18 + n, 206 + w * 16 + n]; });
+  paint(TILE.LAVA, (x, y) => { const s = Math.sin(x * 0.9 + Math.sin(y * 0.7) * 2) * 0.5 + 0.5; const n = jit(14); if ((x * 7 + y * 13) % 11 === 0) return [165 + n, 40, 0]; return [238 + n * 0.3, 92 + s * 112 + n, 8 + s * 36]; });
+  const bucketRows = [
+    '................', '................', '...hh......hh...', '..hhhhhhhhhhhh..',
+    '..mffffffffffd..', '..mmmmmmmmmmmd..', '...mmmmmmmmmd...', '...mmmmmmmmmd...',
+    '...mmmmmmmmmd...', '....mmmmmmmd....', '....mmmmmmmd....', '....dddddddd....',
+    '................', '................', '................', '................'];
+  const bucket = (tile, fill) => art(tile, bucketRows, { h: [225, 225, 232], m: [190, 190, 198], d: [120, 120, 130], f: fill });
+  bucket(TILE.BUCKET, [58, 58, 64]); bucket(TILE.WBUCKET, [70, 130, 240]); bucket(TILE.LBUCKET, [255, 150, 30]);
   const ingot = (tile, h, m, d) => art(tile, [
     '................', '................', '................', '.....hhhhhhhh...',
     '....hhhhhhhhhd..', '...mmmmmmmmmdd..', '...mmmmmmmmmd...', '...mmmmmmmmdd...',
@@ -783,11 +805,15 @@ const ITEMS = [
   { id: 58, name: 'Yellow Wool', top: TILE.WOOL_Y, side: TILE.WOOL_Y, bot: TILE.WOOL_Y, icon: TILE.WOOL_Y, solid: true, transparent: false },
   { id: 59, name: 'Sandstone',   top: TILE.SANDSTONE_TOP, side: TILE.SANDSTONE_SIDE, bot: TILE.SANDSTONE_TOP, icon: TILE.SANDSTONE_SIDE, solid: true, transparent: false },
   { id: 60, name: 'Ice',         top: TILE.ICE,    side: TILE.ICE,    bot: TILE.ICE,    icon: TILE.ICE,    solid: true, transparent: false },
-  { id: 61, name: 'Copper Ore',  top: TILE.COPPER_ORE, side: TILE.COPPER_ORE, bot: TILE.COPPER_ORE, icon: TILE.COPPER_ORE, solid: true, transparent: false }
+  { id: 61, name: 'Copper Ore',  top: TILE.COPPER_ORE, side: TILE.COPPER_ORE, bot: TILE.COPPER_ORE, icon: TILE.COPPER_ORE, solid: true, transparent: false },
+  { id: 90, name: 'Water',       top: TILE.WATER, side: TILE.WATER, bot: TILE.WATER, icon: TILE.WATER, solid: false, transparent: true, fluid: true },
+  { id: 100, name: 'Lava',       top: TILE.LAVA, side: TILE.LAVA, bot: TILE.LAVA, icon: TILE.LAVA, solid: false, transparent: true, fluid: true }
 ];
 
 const BLOCK_MAP = {};
 ITEMS.forEach(it => BLOCK_MAP[it.id] = it);
+for (const fid of [91, 92, 93, 94, 95, 96, 97, 98]) BLOCK_MAP[fid] = Object.assign({}, BLOCK_MAP[90], { id: fid, hidden: true });
+for (const fid of [101, 102, 103, 104]) BLOCK_MAP[fid] = Object.assign({}, BLOCK_MAP[100], { id: fid, hidden: true });
 // Ladders remember which wall they are on: 7 = wall to the north (-z) or whichever wall is found, 45 = south (+z), 46 = west (-x), 47 = east (+x)
 const LADDER_WALL = { 7: [0, -1], 45: [0, 1], 46: [-1, 0], 47: [1, 0] };
 for (const lid of [45, 46, 47]) BLOCK_MAP[lid] = Object.assign({}, BLOCK_MAP[7], { id: lid, hidden: true });
@@ -839,15 +865,18 @@ const ITEM_DEFS = {
   78: { id: 78, name: 'Netherite Helmet',  icon: TILE.N_HELM,  armor: 'head',  points: 6 },
   79: { id: 79, name: 'Netherite Chestplate', icon: TILE.N_CHEST, armor: 'chest', points: 10 },
   80: { id: 80, name: 'Netherite Pickaxe', icon: TILE.N_PICK,  tool: 'pick' },
-  81: { id: 81, name: 'Netherite Axe',     icon: TILE.N_AXE,   tool: 'axe', damage: 10 }
+  81: { id: 81, name: 'Netherite Axe',     icon: TILE.N_AXE,   tool: 'axe', damage: 10 },
+  82: { id: 82, name: 'Bucket',            icon: TILE.BUCKET,  tool: 'bucket' },
+  83: { id: 83, name: 'Water Bucket',      icon: TILE.WBUCKET, tool: 'bucket' },
+  84: { id: 84, name: 'Lava Bucket',       icon: TILE.LBUCKET, tool: 'bucket' }
 };
-const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81];
+const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84];
 function itemInfo(id) { return ITEM_DEFS[id] || BLOCK_MAP[id]; }
 function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[id] && ITEM_DEFS[id].armor ? 1 : 64; }
 
 // ---------- Settings ----------
 const SETTINGS_KEY = 'minecraftz_settings_v7';
-const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true, name: '', online: true, view: 'first', touch: 'auto', cloudUrl: '', weather: true };
+const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true, name: '', online: true, view: 'first', touch: 'auto', cloudUrl: '', weather: true, relay: '' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
 if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(settings.pid || '')) {
   const al = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = '';
@@ -857,6 +886,101 @@ if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(settings.pid || '')) {
 }
 if (!settings.name) settings.name = 'Player' + (1000 + Math.floor(Math.random() * 9000));
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
+
+// ---------- WebSocket relay: a drop-in replacement for the WebRTC peer connection ----------
+const DEFAULT_RELAY = 'wss://minecraftz.onrender.com';
+const relayUrl = () => (settings.relay || DEFAULT_RELAY || '').trim();
+class WSConn {
+  constructor(peer, cid, remote) {
+    this.peer = remote; this.open = false; this._p = peer; this._cid = cid; this._ev = {}; this._closed = false;
+  }
+  on(e, f) { (this._ev[e] || (this._ev[e] = [])).push(f); return this; }
+  _emit(e, a) { for (const f of this._ev[e] || []) { try { f(a); } catch (err) { console.error(err); } } }
+  send(d) { if (this.open) this._p._send({ op: 'd', cid: this._cid, d }); }
+  close() {
+    if (this._closed) return;
+    if (this.open) this._p._send({ op: 'x', cid: this._cid });
+    this._end();
+  }
+  _end() {
+    if (this._closed) return;
+    this._closed = true; this.open = false;
+    this._p._conns.delete(this._cid);
+    this._emit('close');
+  }
+  _opened() { if (this._closed) return; this.open = true; this._emit('open'); }
+}
+class WSPeer {
+  constructor(id, opts) {
+    this._ev = {}; this._conns = new Map(); this._n = 0; this._dead = false; this._reg = false;
+    this.id = (typeof id === 'string' && id) ? id : null;
+    this._want = this.id;
+    this.open = false; this.disconnected = false;
+    this._dial();
+  }
+  on(e, f) { (this._ev[e] || (this._ev[e] = [])).push(f); return this; }
+  _emit(e, a) { for (const f of this._ev[e] || []) { try { f(a); } catch (err) { console.error(err); } } }
+  _err(type) { setTimeout(() => this._emit('error', { type }), 0); }
+  _send(o) { if (this._ws && this._ws.readyState === 1) this._ws.send(JSON.stringify(o)); }
+  _dial() {
+    let ws;
+    try { ws = new WebSocket(relayUrl().replace(/^http/, 'ws')); } catch (e) { this._err('socket-error'); return; }
+    this._ws = ws;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ op: 'reg', id: this._want || this.id || undefined }));
+      clearInterval(this._ping);
+      this._ping = setInterval(() => this._send({ op: 'ping' }), 15000);
+    };
+    ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } this._msg(m); };
+    ws.onclose = () => {
+      if (this._ws !== ws) return;
+      clearInterval(this._ping);
+      const was = this.open;
+      this.open = false;
+      for (const c of [...this._conns.values()]) c._end();
+      if (this._dead) return;
+      this.disconnected = true;
+      if (was) this._emit('disconnected'); else if (!this._failed) this._err('network');
+    };
+    ws.onerror = () => {};
+  }
+  _msg(m) {
+    if (m.op === 'open') { this.id = m.id; this._want = m.id; this.open = true; this.disconnected = false; this._emit('open', m.id); }
+    else if (m.op === 'err') { this._failed = true; this._err(m.type || 'server-error'); }
+    else if (m.op === 'inc') {
+      const c = new WSConn(this, m.cid, m.from);
+      this._conns.set(m.cid, c);
+      this._emit('connection', c);
+      setTimeout(() => c._opened(), 0);
+    }
+    else if (m.op === 'opened') { const c = this._conns.get(m.cid); if (c) c._opened(); }
+    else if (m.op === 'cerr') { const c = this._conns.get(m.cid); if (c) c._end(); this._err(m.type || 'peer-unavailable'); }
+    else if (m.op === 'd') { const c = this._conns.get(m.cid); if (c && c.open) c._emit('data', m.d); }
+    else if (m.op === 'x') { const c = this._conns.get(m.cid); if (c) c._end(); }
+  }
+  connect(remote) {
+    const cid = (this.id || 'p') + '.' + Date.now().toString(36) + '.' + (++this._n);
+    const c = new WSConn(this, cid, remote);
+    this._conns.set(cid, c);
+    this._send({ op: 'conn', to: remote, cid });
+    return c;
+  }
+  reconnect() { if (this._dead || this.open) return; try { if (this._ws) this._ws.close(); } catch (e) {} setTimeout(() => { if (!this._dead && !this.open) this._dial(); }, 1500); }
+  destroy() {
+    this._dead = true; this.open = false;
+    clearInterval(this._ping);
+    for (const c of [...this._conns.values()]) c._end();
+    try { if (this._ws) this._ws.close(); } catch (e) {}
+  }
+}
+(function () {
+  const RealPeer = window.Peer;
+  window.Peer = function (a, b) {
+    if (relayUrl()) return new WSPeer(a, b);
+    if (!RealPeer) throw new Error('no peer library');
+    return new RealPeer(a, b);
+  };
+})();
 const isSurvival = () => settings.mode === 'survival';
 
 // ---------- Inventory ----------
@@ -866,6 +990,7 @@ const armor = { head: 0, chest: 0 };
 const creativeBar = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(id => ({ id, count: 1 }));
 let selectedSlot = 0;
 let hp = 20, maxHp = 20, deaths = 0;
+let pFl = { w: false, l: false, head: null }, airLeft = 10, airT = 1, lavaT = 0, burnT = 1, burning = 0;
 
 function getBar() { return isSurvival() ? inv.slice(0, 9) : creativeBar; }
 function heldSlot() { return isSurvival() ? inv[selectedSlot] : creativeBar[selectedSlot]; }
@@ -963,6 +1088,7 @@ uniform sampler2D uTex;
 uniform float uBright;
 uniform vec3 uSky;
 uniform float uFlash;
+uniform float uAlpha;
 out vec4 fragColor;
 void main() {
   vec4 t = texture(uTex, vUV);
@@ -975,7 +1101,7 @@ void main() {
   vec3 col = t.rgb * vLight * lm * warm;
   col = mix(col, vec3(1.0, 0.15, 0.15), uFlash);
   col = mix(col, uSky, vFog);
-  fragColor = vec4(col, 1.0);
+  fragColor = vec4(col, uAlpha);
 }`;
 
 function compileShader(type, src) {
@@ -1000,6 +1126,8 @@ const uFogEndLoc = gl.getUniformLocation(prog, 'uFogEnd');
 const uBrightLoc = gl.getUniformLocation(prog, 'uBright');
 const uSkyLoc = gl.getUniformLocation(prog, 'uSky');
 const uFlashLoc = gl.getUniformLocation(prog, 'uFlash');
+const uAlphaLoc = gl.getUniformLocation(prog, 'uAlpha');
+gl.uniform1f(uAlphaLoc, 1.0);
 gl.uniform1i(gl.getUniformLocation(prog, 'uTex'), 0);
 
 gl.enable(gl.DEPTH_TEST);
@@ -1043,6 +1171,7 @@ function smoothNoise(x, z) {
   const c = hash2(ix, iz + 1), d = hash2(ix + 1, iz + 1);
   return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
 }
+const WATER_LEVEL = 16;
 function terrainHeight(wx, wz) {
   if (brawlWorld) return 20;
   const n1 = smoothNoise(wx * 0.04, wz * 0.04) * 14;
@@ -1083,7 +1212,7 @@ function carveColumn(data, x, z, wx, wz, h) {
       if (Math.abs(c - 0.5) < th) air = true;
     }
     if (!air && y <= h - 7 && vnoise3(wx * 0.035, y * 0.07, wz * 0.035, 3) > 0.74) air = true;
-    if (air) { data[idx] = 0; continue; }
+    if (air) { data[idx] = (y <= 5 && vnoise3(wx * 0.07, y * 0.25, wz * 0.07, 21) > 0.56) ? 100 : 0; continue; }
     if (b === 6 && y <= h - 4) {
       if (vnoise3(wx * 0.3, y * 0.3, wz * 0.3, 10) > ORE_T.iron) data[idx] = 15;
       else if (y <= 30 && vnoise3(wx * 0.3, y * 0.3, wz * 0.3, 13) > ORE_T.copper) data[idx] = 61;
@@ -1156,6 +1285,12 @@ function generateChunkData(cx, cz) {
           else if (y < h) data[idx] = 2;
           else if (y === h) data[idx] = 1;
         }
+      }
+      const lake = !desert && h < WATER_LEVEL && Math.hypot(wx - 8, wz - 8) > 16;
+      if (lake) {
+        data[(h * CHUNK_SIZE + z) * CHUNK_SIZE + x] = 13;
+        for (let wy = h + 1; wy <= WATER_LEVEL; wy++) data[(wy * CHUNK_SIZE + z) * CHUNK_SIZE + x] = 90;
+        continue;
       }
       if (cavesOn) carveColumn(data, x, z, wx, wz, h);
       if (desert) {
@@ -1239,13 +1374,15 @@ function setBlock(wx, wy, wz, id) {
   if (!ed) { ed = new Map(); edits.set(ekey, ed); }
   ed.set(cidx, id);
   worldDirty = true;
+  fluidNotify(wx, wy, wz, oldId, id);
   markChunkDirty(cx, cz);
   if (lx === 0) markChunkDirty(cx - 1, cz);
   if (lx === CHUNK_SIZE - 1) markChunkDirty(cx + 1, cz);
   if (lz === 0) markChunkDirty(cx, cz - 1);
   if (lz === CHUNK_SIZE - 1) markChunkDirty(cx, cz + 1);
-  if (!mpApplying && MP.role !== 'none') mpSendBlock(wx, wy, wz, id);
-  if (!cloudApplying && isCloud()) { cloudQueueBlock(wx, wy, wz, id); if (oldId === 14 && id !== 14) cloudQueueSign(tkey, null); }
+  const fluidDerived = (isFluid(id) && !isFluidSource(id)) || (id === 0 && isFluid(oldId) && !isFluidSource(oldId));
+  if (!mpApplying && MP.role !== 'none' && !fluidDerived) mpSendBlock(wx, wy, wz, id);
+  if (!cloudApplying && isCloud() && !fluidDerived) { cloudQueueBlock(wx, wy, wz, id); if (oldId === 14 && id !== 14) cloudQueueSign(tkey, null); }
 }
 
 function markChunkDirty(cx, cz) {
@@ -1254,6 +1391,105 @@ function markChunkDirty(cx, cz) {
     ch.dirty = true;
     buildQueue.push(ch);
   }
+}
+
+// ---------- Fluids: water and lava ----------
+function fluidKindAt(x, y, z) {
+  const id = getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+  return isWater(id) ? 'w' : isLava(id) ? 'l' : null;
+}
+function fluidHeight(id, wx, y, wz) {
+  const above = getBlock(wx, y + 1, wz);
+  if ((isFluid(above) && isLava(above) === isLava(id)) || id === 98 || id === 104) return 1;
+  const d = fluidDist(id);
+  return isLava(id) ? (d === 0 ? 0.88 : Math.max(0.3, 0.88 - d * 0.2)) : (d === 0 ? 0.88 : Math.max(0.18, 0.88 - d * 0.1));
+}
+function pushFluid(verts, wverts, id, x, y, z, wx, wz, lb) {
+  const lava = isLava(id), out = lava ? verts : wverts, tile = lava ? TILE.LAVA : TILE.WATER, L = lava ? 1 : lb;
+  const hh = fluidHeight(id, wx, y, wz);
+  const same = (n) => isFluid(n) && isLava(n) === lava;
+  const opaque = (n) => n !== 0 && !BLOCK_MAP[n].transparent;
+  if (hh < 1 || !same(getBlock(wx, y + 1, wz))) {
+    pushFace(out, 0, x, y, z, x + 1, y + hh, z + 1, tile, L);
+    if (!lava) pushFace(out, 1, x, y + hh, z, x + 1, y + hh, z + 1, tile, L);
+  }
+  const below = getBlock(wx, y - 1, wz);
+  if (y > 0 && !same(below) && !opaque(below)) pushFace(out, 1, x, y, z, x + 1, y + 1, z + 1, tile, L);
+  const sides = [[2, 0, 1], [3, 0, -1], [4, 1, 0], [5, -1, 0]];
+  for (const [face, dx, dz] of sides) {
+    const nid = getBlock(wx + dx, y, wz + dz);
+    if (opaque(nid)) continue;
+    let y0 = y;
+    if (same(nid)) { const nh = fluidHeight(nid, wx + dx, y, wz + dz); if (nh >= hh) continue; y0 = y + nh; }
+    pushFace(out, face, x, y0, z, x + 1, y + hh, z + 1, tile, L);
+  }
+}
+const fluidQ = { w: new Set(), l: new Set() };
+let fluidTW = 0, fluidTL = 0;
+const H4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+function fluidNotify(x, y, z, oldId, id) {
+  let hit = isFluid(oldId) || isFluid(id);
+  if (!hit) for (const d of DIRS6) if (isFluid(getBlock(x + d[0], y + d[1], z + d[2]))) { hit = true; break; }
+  if (!hit) return;
+  for (const q of [fluidQ.w, fluidQ.l]) {
+    q.add(x + ',' + y + ',' + z);
+    for (const d of DIRS6) q.add((x + d[0]) + ',' + (y + d[1]) + ',' + (z + d[2]));
+  }
+}
+function fluidLoaded(x, z) { return chunks.has(chunkKey(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE))); }
+function fluidSupports(b, lava) {
+  if (b === 0) return false;
+  if (BLOCK_MAP[b].solid) return true;
+  if (isFluid(b) && isLava(b) === lava) return b !== 98 && b !== 104;
+  return false;
+}
+function fluidEval(x, y, z, lava) {
+  if (y < 1 || !fluidLoaded(x, z)) return;
+  const cur = getBlock(x, y, z);
+  const curFluid = isFluid(cur) && isLava(cur) === lava;
+  if (cur !== 0 && !curFluid) return;
+  const src = lava ? 100 : 90, fallId = lava ? 104 : 98, maxD = lava ? 3 : 7;
+  if (cur === src) return;
+  let desired = 0;
+  const above = getBlock(x, y + 1, z);
+  if (isFluid(above) && isLava(above) === lava) desired = fallId;
+  else {
+    let best = 99, srcN = 0;
+    for (const [dx, dz] of H4) {
+      const nid = getBlock(x + dx, y, z + dz);
+      if (isFluid(nid) && isLava(nid) === lava) {
+        const nd = fluidDist(nid);
+        if (nid === src) srcN++;
+        if (nd < maxD && fluidSupports(getBlock(x + dx, y - 1, z + dz), lava)) best = Math.min(best, nd + 1);
+      }
+    }
+    const below = getBlock(x, y - 1, z);
+    if (!lava && srcN >= 2 && below !== 0 && (BLOCK_MAP[below].solid || below === 90)) desired = src;
+    else if (best <= maxD) desired = src + best;
+  }
+  if (desired !== 0 && lava) {
+    for (const d of DIRS6) if (isWater(getBlock(x + d[0], y + d[1], z + d[2]))) { desired = desired === 100 ? 53 : 48; break; }
+  }
+  if (desired !== cur) setBlock(x, y, z, desired);
+}
+function fluidContact(x, y, z) {
+  const cur = getBlock(x, y, z);
+  if (!isLava(cur)) return;
+  for (const d of DIRS6) if (isWater(getBlock(x + d[0], y + d[1], z + d[2]))) { setBlock(x, y, z, cur === 100 ? 53 : 48); return; }
+}
+function runFluidQueue(set, lava) {
+  const keys = [...set].slice(0, 500);
+  for (const k of keys) set.delete(k);
+  for (const k of keys) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (!lava) fluidContact(x, y, z);
+    fluidEval(x, y, z, lava);
+  }
+}
+function updateFluids(dt) {
+  fluidTW += dt; fluidTL += dt;
+  if (fluidTW >= 0.2) { fluidTW = 0; runFluidQueue(fluidQ.w, false); }
+  if (fluidTL >= 1.0) { fluidTL = 0; runFluidQueue(fluidQ.l, true); }
 }
 
 // Geometry Helpers
@@ -1391,6 +1627,7 @@ function markLightArea(wx, wz) {
 
 function buildChunkMesh(ch) {
   const verts = [];
+  const wverts = [];
   const baseX = ch.cx * CHUNK_SIZE;
   const baseZ = ch.cz * CHUNK_SIZE;
   const isOpaque = (b) => b !== 0 && !BLOCK_MAP[b].transparent;
@@ -1431,6 +1668,8 @@ function buildChunkMesh(ch) {
         const wx = baseX + x, wz = baseZ + z;
         const info = BLOCK_MAP[id];
         const lb = lightAtU(wx, y, wz);
+
+        if (isFluid(id)) { pushFluid(verts, wverts, id, x, y, z, wx, wz, lb); continue; }
 
         if (isLadder(id)) {
           // Ladder rungs, flat against the wall it hangs on
@@ -1510,6 +1749,12 @@ function buildChunkMesh(ch) {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
   setupAttribs();
   ch.count = verts.length / 7;
+  if (!ch.wvao) { ch.wvao = gl.createVertexArray(); ch.wvbo = gl.createBuffer(); }
+  gl.bindVertexArray(ch.wvao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, ch.wvbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(wverts), gl.STATIC_DRAW);
+  setupAttribs();
+  ch.wcount = wverts.length / 7;
   ch.dirty = false;
 }
 
@@ -1587,6 +1832,8 @@ function clearChunks() {
   for (const ch of chunks.values()) {
     if (ch.vao) gl.deleteVertexArray(ch.vao);
     if (ch.vbo) gl.deleteBuffer(ch.vbo);
+    if (ch.wvao) gl.deleteVertexArray(ch.wvao);
+    if (ch.wvbo) gl.deleteBuffer(ch.wvbo);
   }
   chunks.clear();
   buildQueue.length = 0;
@@ -1644,6 +1891,7 @@ function syncSettingsUI() {
   $('sName').value = settings.name; $('mmName').value = settings.name;
   $('sOnline').checked = settings.online; $('mmOnline').checked = settings.online;
   $('sCloud').value = settings.cloudUrl || '';
+  $('sRelay').value = settings.relay || '';
   $('sWeather').checked = settings.weather !== false;
   $('sModeText').textContent = inGame ? (isSurvival() ? 'Survival' : 'Creative') : 'Set when you create a world';
   const dl = netDayLen || settings.dayLen;
@@ -1679,6 +1927,14 @@ function onlineChanged(v) {
   presStart();
 }
 $('sOnline').onchange = (e) => onlineChanged(e.target.checked);
+$('sRelay').addEventListener('keydown', (e) => e.stopPropagation());
+$('sRelay').onchange = (e) => {
+  let v = e.target.value.trim();
+  if (v && !/^(wss?|https?):\/\//i.test(v)) v = 'wss://' + v;
+  settings.relay = v.replace(/\/+$/, ''); e.target.value = settings.relay; saveSettings();
+  if (settings.online) { if (inGame) mpStart(); presStart(); }
+  mpToast(settings.relay ? 'Using the WebSocket relay' : 'Relay cleared, using the direct connection');
+};
 $('mmOnline').onchange = (e) => onlineChanged(e.target.checked);
 syncSettingsUI();
 
@@ -1766,6 +2022,7 @@ shaped(59, 2, ['SS', 'SS'], { S: 13 });
 shaped(60, 2, ['GG', 'GG'], { G: 3 });
 shapeless(1, 1, [2, 10]);
 shapeless(64, 1, [28, 27, 27, 53]);
+shaped(82, 1, ['M.M', '.M.'], { M: 26 });
 // gear: material item, then sword / pickaxe / axe / helmet / chestplate
 for (const [m, sw, pk, ax, hm, ch] of [
   [5, 21, 24, 25, 22, 23], [63, 0, 0, 0, 65, 66], [62, 67, 70, 71, 68, 69], [26, 30, 29, 33, 31, 32], [27, 34, 37, 38, 35, 36],
@@ -3559,6 +3816,7 @@ function raycastTarget() {
   }
 
   let hitBlock = null;
+  const wantFluid = heldId() === 82;
   let prevX = Math.floor(eyeX), prevY = Math.floor(eyeY), prevZ = Math.floor(eyeZ);
   const step = 0.05;
   for (let d = 0.2; d <= 5.5; d += step) {
@@ -3567,6 +3825,7 @@ function raycastTarget() {
     const pz = eyeZ + dir.z * d;
     const bx = Math.floor(px), by = Math.floor(py), bz = Math.floor(pz);
     const id = getBlock(bx, by, bz);
+    if (id !== 0 && isFluid(id) && !(wantFluid && isFluidSource(id))) { prevX = bx; prevY = by; prevZ = bz; continue; }
     if (id !== 0) {
       hitBlock = { bx, by, bz, px: prevX, py: prevY, pz: prevZ, id, dist: d };
       break;
@@ -3645,6 +3904,24 @@ function handleUseOrPlace() {
     armor[item.armor] = item.id;
     slot.id = old; slot.count = old ? 1 : 0;
     renderHotbar();
+    return;
+  }
+
+  // Buckets: scoop up a water or lava source, or pour it out
+  if (item.id === 82) {
+    if (target && target.type === 'block' && isFluidSource(target.id)) {
+      const full = target.id === 90 ? 83 : 84;
+      setBlock(target.bx, target.by, target.bz, 0);
+      if (isSurvival()) { slot.id = full; slot.count = 1; renderHotbar(); }
+    }
+    return;
+  }
+  if (item.id === 83 || item.id === 84) {
+    if (!target || target.type !== 'block') return;
+    const cell = getBlock(target.px, target.py, target.pz);
+    if (cell !== 0 && !(isFluid(cell) && !isFluidSource(cell))) return;
+    setBlock(target.px, target.py, target.pz, item.id === 83 ? 90 : 100);
+    if (isSurvival()) { slot.id = 82; slot.count = 1; renderHotbar(); }
     return;
   }
 
@@ -3830,6 +4107,7 @@ function updateDrops(dt) {
     if (d.age > 300 || d.y < -10) { drops.splice(i, 1); continue; }
     if (!chunks.has(chunkKey(Math.floor(d.x / CHUNK_SIZE), Math.floor(d.z / CHUNK_SIZE)))) continue;
 
+    if (fluidKindAt(d.x, d.y + 0.1, d.z) === 'l') { drops.splice(i, 1); continue; }
     d.vy -= 20 * dt;
     const ny = d.y + d.vy * dt;
     if (d.vy < 0 && isSolidAt(d.x, ny, d.z)) {
@@ -4012,7 +4290,7 @@ function respawn() {
   player.x = 8.5; player.z = 8.5;
   player.y = terrainHeight(8, 8) + 3;
   player.vx = player.vy = player.vz = 0;
-  hp = maxHp; lastHurt = 99;
+  hp = maxHp; lastHurt = 99; burning = 0; airLeft = 10;
   mobs.length = 0;
   document.getElementById('death').style.display = 'none';
   renderHearts();
@@ -4025,6 +4303,13 @@ function updateSurvival(dt) {
     return;
   }
   if (!isSurvival()) return;
+  if (pFl.l) { burning = 3; lavaT -= dt; if (lavaT <= 0) { damagePlayer(3, true); lavaT = 0.5; } }
+  else if (burning > 0) {
+    if (pFl.w) burning = 0; else { burning -= dt; burnT -= dt; if (burnT <= 0) { damagePlayer(1, true); burnT = 1; } }
+  }
+  if (pFl.head === 'w') { airLeft -= dt; if (airLeft <= 0) { airT -= dt; if (airT <= 0) { damagePlayer(2, true); airT = 1; } } }
+  else { airLeft = Math.min(10, airLeft + dt * 5); airT = 1; }
+  if (pFl.w || pFl.l) player.impact = 0;
   if (player.impact) {
     const dmg = Math.floor(player.impact * player.impact / 48 - 3);
     if (dmg > 0 && !player.noclip) damagePlayer(dmg, true);
@@ -4137,7 +4422,7 @@ function updateSpawning(dt) {
   if (!chunks.has(chunkKey(Math.floor(sx / CHUNK_SIZE), Math.floor(sz / CHUNK_SIZE)))) return;
   let sy = -1;
   for (let y = CHUNK_HEIGHT - 2; y >= 1; y--) if (isSolidAt(sx, y, sz)) { sy = y + 1; break; }
-  if (sy < 0 || isSolidAt(sx, sy, sz) || isSolidAt(sx, sy + 1, sz)) return;
+  if (sy < 0 || isSolidAt(sx, sy, sz) || isSolidAt(sx, sy + 1, sz) || isFluid(getBlock(sx, sy, sz))) return;
   mobs.push(makeZombie(sx + 0.5, sy, sz + 0.5));
 }
 
@@ -4163,6 +4448,8 @@ function updateMobs(dt) {
       }
     }
 
+    const mfl = fluidKindAt(m.x, m.y + 0.5, m.z);
+    if (mfl === 'l') { m.hp -= 6 * dt; m.flash = 0.2; if (m.hp <= 0) { killMob(m); continue; } }
     const chase = isSurvival() && deadTimer <= 0 && (pd < 24 || brawlWorld);
     if (m.kb <= 0) {
       let dirX = 0, dirZ = 0, speed = m.speed || (hard ? 3.0 : 2.4);
@@ -4189,6 +4476,7 @@ function updateMobs(dt) {
       m.vx *= f; m.vz *= f;
     }
     m.vy -= 24 * dt;
+    if (mfl) { m.vy = Math.max(m.vy, -2); m.vx *= 0.8; m.vz *= 0.8; }
     collideBody(m, dt, 0.3 * (m.sc || 1), 1.8 * (m.sc || 1));
     m.impact = 0;
 
@@ -4584,7 +4872,7 @@ function wxGust(now) {
   const s = Math.sin(Math.PI * f);
   return Math.pow(wxHash(i * 7 + 1), 1.5) * s * s;
 }
-const wxCovers = (id) => id !== 0 && !isLadder(id) && id !== 8 && id !== 11 && id !== 14;
+const wxCovers = (id) => id !== 0 && !isLadder(id) && id !== 8 && id !== 11 && id !== 14 && !isFluid(id);
 function wxIsSheltered() {
   const x = Math.floor(player.x), z = Math.floor(player.z);
   for (let y = Math.floor(player.y + 1.9); y < CHUNK_HEIGHT; y++) if (wxCovers(getBlock(x, y, z))) return true;
@@ -4727,6 +5015,8 @@ function loop(now) {
     if (Math.abs(ch.cx - pcx) > RENDER_DIST + 2 || Math.abs(ch.cz - pcz) > RENDER_DIST + 2) {
       if (ch.vao) gl.deleteVertexArray(ch.vao);
       if (ch.vbo) gl.deleteBuffer(ch.vbo);
+      if (ch.wvao) gl.deleteVertexArray(ch.wvao);
+      if (ch.wvbo) gl.deleteBuffer(ch.wvbo);
       chunks.delete(key);
     }
   }
@@ -4740,6 +5030,7 @@ function loop(now) {
   weatherTick(dt, locked && deadTimer <= 0);
 
   // Player movement
+  pFl.w = pFl.l = false; pFl.head = null;
   if (locked && !ridingCart && deadTimer <= 0) {
     const fwdX = -Math.sin(player.yaw);
     const fwdZ = -Math.cos(player.yaw);
@@ -4769,6 +5060,12 @@ function loop(now) {
       if (len > 1) { mx /= len; mz /= len; }
       player.vx = mx * speed + wx.vx;
       player.vz = mz * speed + wx.vz;
+      const fk = (yy) => fluidKindAt(player.x, player.y + yy, player.z);
+      const fFeet = fk(0.2), fBody = fk(0.9);
+      pFl.head = fk(1.6);
+      pFl.w = fFeet === 'w' || fBody === 'w';
+      pFl.l = fFeet === 'l' || fBody === 'l';
+      if (pFl.l) { player.vx *= 0.35; player.vz *= 0.35; } else if (pFl.w) { player.vx *= 0.6; player.vz *= 0.6; }
 
       const onLadder = isLadder(getBlock(Math.floor(player.x), Math.floor(player.y + 0.5), Math.floor(player.z))) ||
                        isLadder(getBlock(Math.floor(player.x), Math.floor(player.y + 1.2), Math.floor(player.z)));
@@ -4780,6 +5077,11 @@ function loop(now) {
         else if (moveF < -0.25) player.vy = -5.0;
         if (keys['Space']) player.vy = 5.0;
         if (keys['ShiftLeft']) player.vy = -5.0;
+      } else if (pFl.w || pFl.l) {
+        player.vy -= (pFl.l ? 6 : 8) * dt;
+        if (keys['Space']) player.vy = pFl.head ? (pFl.l ? 2.2 : 3.8) : (pFl.l ? 3 : 7.2);
+        if (keys['ShiftLeft']) player.vy = -4;
+        player.vy = Math.max(player.vy, pFl.l ? -2 : -3);
       } else {
         if (keys['Space'] && player.onGround) {
           player.vy = 8.4;
@@ -4798,12 +5100,22 @@ function loop(now) {
     updateSurvival(dt);
     updateSpawning(dt);
     brawlTick(dt);
+    if (!brawlWorld) updateFluids(dt);
     updateMinecarts(dt);
     updateMobs(dt);
     updateDrops(dt);
     updateMining(dt);
   } else resetMining();
   document.getElementById('clock').textContent = clockText();
+  {
+    const camK = fluidKindAt(player.x, player.y + 1.62, player.z);
+    const tint = camK === 'w' ? 'rgba(30,80,200,0.42)' : camK === 'l' ? 'rgba(255,90,0,0.8)' : (burning > 0 && isSurvival() ? 'rgba(255,120,0,0.16)' : '');
+    const tEl = $('fluidTint');
+    if (tEl._k !== tint) { tEl._k = tint; tEl.style.background = tint || 'transparent'; tEl.style.opacity = tint ? 1 : 0; }
+    const showAir = isSurvival() && pFl.head === 'w';
+    const airTxt = showAir ? '\u25CB'.repeat(Math.max(0, Math.ceil(airLeft))) : '';
+    if ($('airBar')._k !== airTxt) { $('airBar')._k = airTxt; $('airBar').textContent = airTxt; }
+  }
 
   // Update UI prompt
   const promptEl = document.getElementById('prompt');
@@ -4919,6 +5231,22 @@ function loop(now) {
     gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
   }
   gl.uniform1f(uYawLoc, 0);
+
+  // Water: translucent pass over everything solid
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(false);
+  gl.uniform1f(uAlphaLoc, 0.62);
+  for (const ch of chunks.values()) {
+    if (ch.wvao && ch.wcount > 0) {
+      gl.uniform3f(uOffsetLoc, ch.cx * CHUNK_SIZE, 0, ch.cz * CHUNK_SIZE);
+      gl.bindVertexArray(ch.wvao);
+      gl.drawArrays(gl.TRIANGLES, 0, ch.wcount);
+    }
+  }
+  gl.depthMask(true);
+  gl.disable(gl.BLEND);
+  gl.uniform1f(uAlphaLoc, 1.0);
 
   // Draw Target Block Outline
   if (!ridingCart) {
