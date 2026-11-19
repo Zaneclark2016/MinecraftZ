@@ -1,0 +1,11 @@
+name = "minecraftz-worlds"
+main = "worker.js"
+compatibility_date = "2026-11-19"
+
+[[durable_objects.bindings]]
+name = "WORLDS"
+class_name = "World"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["World"]
