@@ -2539,7 +2539,7 @@ function updatePauseInfo() {
     l1b.textContent = '';
     const ls = document.createElement('span');
     ls.id = 'pauseSeed'; ls.textContent = 'Copy join link'; ls.title = 'Friends can open this any time, even when you are away';
-    ls.onclick = (e) => { e.stopPropagation(); try { navigator.clipboard.writeText(cloudLink(currentWorld)); mpToast('Join link copied'); } catch (err) { prompt('Join link', cloudLink(currentWorld)); } };
+    ls.onclick = async (e) => { e.stopPropagation(); try { const link = await createCloudInvite(currentWorld, 'builder'); try { await navigator.clipboard.writeText(link); mpToast('Builder invite copied'); } catch (err) { prompt('Friend invite link', link); } } catch (err) { mpToast('Could not create invite: ' + err.message); } };
     l1b.append('Cloud world: ', ls);
   }
   info.append(l1, l1b, l2);
