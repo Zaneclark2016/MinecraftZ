@@ -1887,6 +1887,7 @@ function newWorld() {
 
 // ---------- Settings screen ----------
 const $ = (id) => document.getElementById(id);
+const CLOUD_API='https://minecraftz-worlds.zaneclark16.workers.dev';
 function syncSettingsUI() {
   $('sName').value = settings.name; $('mmName').value = settings.name;
   $('sOnline').checked = settings.online; $('mmOnline').checked = settings.online;
@@ -2567,7 +2568,6 @@ document.addEventListener('pointerlockchange', () => { if (document.pointerLockE
 // ---------- Cloud worlds (Cloudflare persistent storage) ----------
 let cloudApplying=false,cloudLoading=false,cloudDirty=false,cloudTimer=null,cloudBusy=false,cloudPollBusy=false,cloudPollTimer=null;
 const cloudPending=new Map();
-const CLOUD_API='https://minecraftz-worlds.zaneclark16.workers.dev';
 const isCloud=()=>!!(currentWorld&&currentWorld.cloud);
 const cloudBase=()=>CLOUD_API;
 function cloudCode(w){if(!w||!w.inviteToken)return '';const j=JSON.stringify({u:CLOUD_API,c:w.cid,t:w.inviteToken});return 'MCZ2.'+btoa(j).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
