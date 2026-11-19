@@ -250,9 +250,8 @@
     <div class="row" id="rowMobs"><span>Mobs (Survival)</span><input type="checkbox" id="sMobs"></div>
     <div class="row"><span>Day Length</span><input type="range" id="sDay" min="2" max="20" step="1"><span class="val" id="vDay"></span></div>
     <div class="row"><span>Render Distance</span><input type="range" id="sRender" min="2" max="8" step="1"><span class="val" id="vRender"></span></div>
-    <div class="row"><span>Cloud database URL</span><input type="text" id="sCloud" placeholder="https://your-project-default-rtdb.firebaseio.com" style="width:230px"><button class="btn" id="sCloudTest" style="margin:0 0 0 6px;padding:4px 12px">Test</button></div>
-    <div class="hint" id="sCloudMsg"></div>
-    <div class="hint">Cloud worlds stay online so friends can join while you are away. One-time setup: at console.firebase.google.com create a free project, open Build, Realtime Database, create a database (test mode is fine), copy its URL here, then open the Rules tab and paste: {"rules":{"worlds":{"$w":{".read":true,".write":true}}}} and Publish. Anyone with a world's join link can edit that world, so share it only with people you trust.</div>
+    <div class="row"><span>Cloud worlds</span><input type="text" id="sCloud" value="https://minecraftz-worlds.zaneclark16.workers.dev" readonly style="width:290px"><button class="btn" id="sCloudTest" style="margin:0 0 0 6px;padding:4px 12px">Test</button></div>
+    <div class="hint" id="sCloudMsg">Secure MinecraftZ cloud service. No separate database setup needed.</div>
     <div class="row"><span>Weather (rain and storms)</span><input type="checkbox" id="sWeather"></div>
     <div class="row"><span>Touch controls</span><select id="sTouch"><option value="auto">Auto</option><option value="on">Always on</option><option value="off">Off</option></select></div>
     <div class="row"><span>Camera (press V in game)</span><select id="sView"><option value="first">First person</option><option value="third">Third person (behind)</option><option value="front">Third person (front)</option></select></div>
@@ -1350,6 +1349,7 @@ function getBlock(wx, wy, wz) {
 }
 
 function setBlock(wx, wy, wz, id) {
+  if (isCloud() && currentWorld.cloudRole === 'visitor' && !cloudApplying) { mpToast('You have visitor permission in this world.'); return; }
   if (wy < 1 || wy >= CHUNK_HEIGHT) return;
   const cx = Math.floor(wx / CHUNK_SIZE);
   const cz = Math.floor(wz / CHUNK_SIZE);
@@ -1890,7 +1890,7 @@ const $ = (id) => document.getElementById(id);
 function syncSettingsUI() {
   $('sName').value = settings.name; $('mmName').value = settings.name;
   $('sOnline').checked = settings.online; $('mmOnline').checked = settings.online;
-  $('sCloud').value = settings.cloudUrl || '';
+  $('sCloud').value = CLOUD_API;
   $('sRelay').value = settings.relay || '';
   $('sWeather').checked = settings.weather !== false;
   $('sModeText').textContent = inGame ? (isSurvival() ? 'Survival' : 'Creative') : 'Set when you create a world';
@@ -2494,7 +2494,7 @@ function renderWorldList() {
         if (!confirm(`Add caves and ores to "${w.name}"? They appear in the terrain under and around your builds. Your placed blocks stay as they are, but a cave can open beneath a build. This cannot be undone.`)) return;
         w.caves = true; saveWorldList(); renderWorldList();
       })]),
-      ...(w.cloud ? [mk('Copy join link', () => { try { navigator.clipboard.writeText(cloudLink(w)); mpToast('Join link copied. Send it to your friend.'); } catch (e) { prompt('Join link', cloudLink(w)); } })]
+      ...(w.cloud ? [mk('Create / copy friend invite', async () => { try { const link = await createCloudInvite(w, 'builder'); try { await navigator.clipboard.writeText(link); mpToast('Builder invite copied. Share it with your friend.'); } catch(e) { prompt('Friend invite link', link); } } catch(e) { mpToast('Could not create invite: '+e.message); } })]
                   : w.remote || w.brawl ? [] : [mk('Upload to cloud', () => uploadToCloud(w))]),
       mk('Rename', () => {
         const n = prompt('Rename world', w.name);
@@ -2564,243 +2564,38 @@ window.addEventListener('pagehide', saveWorld);
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveWorld(); });
 document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== canvas) saveWorld(); });
 
-// ---------- Cloud worlds (saved online so friends can join while you are away) ----------
-// The world's blocks and signs live in a free Firebase Realtime Database that you set up once.
-// Everyone who has the world's join link reads and writes the same data, so the world is always there.
-let cloudApplying = false, cloudLoading = false, cloudDirty = false;
-let cloudES = null, cloudTimer = null, cloudBusy = false;
-const cloudPending = new Map();   // database path -> value waiting to be sent
-const isCloud = () => !!(currentWorld && currentWorld.cloud);
-const cloudBase = (w) => ((w && w.curl) || settings.cloudUrl || '').replace(/\/+$/, '');
-const CID_RE = /^[A-Za-z0-9]{16}$/;
-const newCid = () => { const al = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 16; i++) s += al[Math.floor(Math.random() * al.length)]; return s; };
-const goodUrl = (u) => /^https?:\/\/[^\s/]+(\/)?$/.test(String(u || '').trim());
-
-function cloudCode(w) {
-  const j = JSON.stringify({ u: cloudBase(w), c: w.cid });
-  return 'MCZ1.' + btoa(j).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-function parseCloudCode(s) {
-  try {
-    s = String(s || '').trim();
-    const i = s.indexOf('MCZ1.'); if (i < 0) return null;
-    s = s.slice(i + 5).replace(/[^A-Za-z0-9_\-]/g, '').replace(/-/g, '+').replace(/_/g, '/');
-    while (s.length % 4) s += '=';
-    const o = JSON.parse(atob(s));
-    if (!goodUrl(o.u) || !CID_RE.test(String(o.c))) return null;
-    return { u: o.u.replace(/\/+$/, ''), c: o.c };
-  } catch (e) { return null; }
-}
-function cloudLink(w) { return location.href.split('#')[0] + '#join=' + cloudCode(w); }
-
-async function cloudReq(base, path, method, body, keepalive) {
-  const ctl = new AbortController();
-  const to = setTimeout(() => ctl.abort(), 15000);
-  try {
-    const res = await fetch(`${base}/${path}.json`, { method, body: body === undefined ? undefined : JSON.stringify(body), signal: ctl.signal, keepalive: !!keepalive });
-    if (!res.ok) { const e = new Error('HTTP ' + res.status); e.status = res.status; throw e; }
-    return await res.json();
-  } finally { clearTimeout(to); }
-}
-const cloudMeta = (w) => ({ v: 1, name: w.name, seed: w.seed, seedText: w.seedText, mode: w.mode, difficulty: w.difficulty || 'normal', mobs: w.mobs !== false, caves: w.caves === true, dayLen: w.dayLen || 6, epoch: w.epoch, created: w.created });
-
-// ----- writing -----
-function cloudQueueBlock(wx, wy, wz, id) {
-  const cx = Math.floor(wx / CHUNK_SIZE), cz = Math.floor(wz / CHUNK_SIZE);
-  const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE, lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-  cloudPending.set(`edits/${cx}_${cz}/${(wy * CHUNK_SIZE + lz) * CHUNK_SIZE + lx}`, id); cloudDirty = true;
-}
-function cloudQueueSign(key, s) {
-  const p = key.split(',');
-  cloudPending.set(`signs/${p[0]}_${p[1]}_${p[2]}`, s ? { t: s.text, f: s.face } : null); cloudDirty = true;
-}
-const pendKey = (w) => 'minecraftz_cpend_' + w.cid;
-function cloudPersistPend(w) {
-  cloudDirty = false;
-  try {
-    if (cloudPending.size) localStorage.setItem(pendKey(w), JSON.stringify([...cloudPending]));
-    else localStorage.removeItem(pendKey(w));
-  } catch (e) {}
-}
-// Changes that never reached the cloud (you were offline) are kept on this device and sent next time
-function cloudRestorePend(w) {
-  let a = null;
-  try { a = JSON.parse(localStorage.getItem(pendKey(w)) || 'null'); } catch (e) {}
-  if (!Array.isArray(a)) return;
-  for (const p of a) {
-    if (!Array.isArray(p) || typeof p[0] !== 'string') continue;
-    cloudApply('/' + p[0], p[1]);
-    cloudPending.set(p[0], p[1]);
-  }
-  cloudDirty = true;
-}
-async function cloudFlush(keepalive) {
-  if (!cloudPending.size || !isCloud()) return;
-  if (cloudBusy && !keepalive) return;
-  const w = currentWorld, base = cloudBase(w);
-  const batch = {}; const sent = new Map();
-  for (const [k, v] of cloudPending) { batch[k] = v; sent.set(k, v); }
-  cloudBusy = true;
-  try {
-    await cloudReq(base, 'worlds/' + w.cid, 'PATCH', batch, keepalive);
-    for (const [k, v] of sent) if (cloudPending.get(k) === v) cloudPending.delete(k);
-    if (currentWorld === w) { cloudPersistPend(w); $('cloudDot').textContent = ''; }
-    else { try { if (!cloudPending.size) localStorage.removeItem(pendKey(w)); } catch (e) {} }
-  } catch (e) {
-    if (currentWorld === w) $('cloudDot').textContent = 'Cloud: offline, will retry';
-  } finally { cloudBusy = false; }
-}
-
-// ----- reading -----
-function cloudSetCell(ck, idx, id) {
-  const m = /^(-?\d+)_(-?\d+)$/.exec(ck);
-  idx = +idx;
-  if (!m || !Number.isInteger(idx) || idx < 0 || idx >= CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE) return;
-  id = +id;
-  if (!Number.isInteger(id) || id < 0 || (id !== 0 && !BLOCK_MAP[id])) return;
-  const cx = +m[1], cz = +m[2];
-  const lx = idx % CHUNK_SIZE, lz = Math.floor(idx / CHUNK_SIZE) % CHUNK_SIZE, y = Math.floor(idx / (CHUNK_SIZE * CHUNK_SIZE));
-  if (y < 1 || y >= CHUNK_HEIGHT) return;
-  const wx = cx * CHUNK_SIZE + lx, wz = cz * CHUNK_SIZE + lz;
-  const ch = chunks.get(chunkKey(cx, cz));
-  if (ch) {
-    if (ch.data[idx] === id) return;
-    cloudApplying = true;
-    try { setBlock(wx, y, wz, id); } finally { cloudApplying = false; }
-  } else {
-    const ek = chunkKey(cx, cz);
-    let ed = edits.get(ek); if (!ed) { ed = new Map(); edits.set(ek, ed); }
-    ed.set(idx, id);
-    const tk = wx + ',' + y + ',' + wz;
-    if (id === 11) torches.set(tk, [wx, y, wz]); else torches.delete(tk);
-  }
-  if (id === 14 && !signs.has(wx + ',' + y + ',' + wz)) signs.set(wx + ',' + y + ',' + wz, { text: '', face: 0 });
-}
-function cloudSetSign(k, data) {
-  const m = /^(-?\d+)_(\d+)_(-?\d+)$/.exec(k);
-  if (!m) return;
-  const key = m[1] + ',' + m[2] + ',' + m[3];
-  if (data === null || typeof data !== 'object') signs.delete(key);
-  else signs.set(key, { text: cleanSign(data.t), face: data.f === 1 ? 1 : 0 });
-  markChunkDirty(Math.floor(+m[1] / CHUNK_SIZE), Math.floor(+m[3] / CHUNK_SIZE));
-}
-function cloudApply(path, data) {
-  const parts = String(path).split('/').filter(Boolean);
-  if (parts.length === 0) {
-    if (data && typeof data === 'object') { if (data.edits) cloudApply('/edits', data.edits); if (data.signs) cloudApply('/signs', data.signs); }
-  } else if (parts[0] === 'edits') {
-    if (parts.length === 1 && data && typeof data === 'object') for (const ck in data) cloudApply('/edits/' + ck, data[ck]);
-    else if (parts.length === 2 && data && typeof data === 'object') { for (const i in data) if (data[i] !== null && data[i] !== undefined) cloudSetCell(parts[1], i, data[i]); }
-    else if (parts.length === 3 && data !== null) cloudSetCell(parts[1], parts[2], data);
-  } else if (parts[0] === 'signs') {
-    if (parts.length === 1 && data && typeof data === 'object') for (const k in data) cloudSetSign(k, data[k]);
-    else if (parts.length === 2) cloudSetSign(parts[1], data);
-  }
-}
-function cloudStart() {
-  cloudStop();
-  const w = currentWorld, base = cloudBase(w);
-  cloudTimer = setInterval(() => { cloudFlush(false); if (cloudDirty) cloudPersistPend(w); }, 700);
-  if (typeof EventSource === 'undefined') return;
-  const es = new EventSource(`${base}/worlds/${w.cid}.json`);
-  cloudES = es;
-  const onEvt = (patch) => (ev) => {
-    if (cloudES !== es) return;
-    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-    if (!m || typeof m.path !== 'string') return;
-    if (patch && m.data && typeof m.data === 'object') for (const k in m.data) cloudApply(m.path.replace(/\/$/, '') + '/' + k, m.data[k]);
-    else cloudApply(m.path, m.data);
-  };
-  es.addEventListener('put', onEvt(false));
-  es.addEventListener('patch', onEvt(true));
-}
-function cloudStop() {
-  clearInterval(cloudTimer); cloudTimer = null;
-  if (cloudES) { try { cloudES.close(); } catch (e) {} cloudES = null; }
-}
-window.addEventListener('pagehide', () => { if (isCloud()) cloudFlush(true); });
-
-// Load the world's saved blocks, then start it
-async function startCloudWorld(entry) {
-  if (cloudLoading) return;
-  cloudLoading = true;
-  mpToast('Loading cloud world...');
-  try {
-    const base = cloudBase(entry);
-    const data = await cloudReq(base, 'worlds/' + entry.cid, 'GET');
-    if (!data || !data.meta) throw new Error('missing');
-    cloudLoading = false;
-    startWorld(entry, data);
-    lockGame();
-  } catch (e) {
-    cloudLoading = false;
-    mpToast(e.message === 'missing' ? 'That cloud world no longer exists.' : 'Could not reach the cloud database. Check your connection and the database URL in Settings.');
-  }
-}
-
-// ----- creating, joining, uploading -----
-async function createCloudEntry(entry) {
-  if (!goodUrl(settings.cloudUrl)) { mpToast('Set your cloud database URL in Settings first.'); return false; }
-  entry.cloud = true; entry.cid = newCid(); entry.curl = settings.cloudUrl.trim().replace(/\/+$/, ''); entry.epoch = Date.now(); entry.rid = entry.cid;
-  try { await cloudReq(entry.curl, `worlds/${entry.cid}/meta`, 'PUT', cloudMeta(entry)); return true; }
-  catch (e) { mpToast('Could not reach the cloud database (' + e.message + '). Check the URL and rules in Settings.'); return false; }
-}
-async function joinCloudCode(code, setStatus) {
-  const pc = parseCloudCode(code);
-  if (!pc) { setStatus('That is not a valid cloud join code.'); return; }
-  setStatus('Finding the world...');
-  try {
-    const meta = await cloudReq(pc.u, `worlds/${pc.c}/meta`, 'GET');
-    if (!meta) { setStatus('That world was not found in the cloud database.'); return; }
-    let entry = worlds.find(w => w.cid === pc.c);
-    if (!entry) {
-      entry = { id: newId(), name: String(meta.name || 'Cloud world').slice(0, 32), seed: meta.seed | 0, seedText: String(meta.seedText || meta.seed), mode: meta.mode === 'survival' ? 'survival' : 'creative',
-        difficulty: ['peaceful', 'normal', 'hard'].includes(meta.difficulty) ? meta.difficulty : 'normal', mobs: meta.mobs !== false, caves: meta.caves === true, dayLen: meta.dayLen || 6,
-        cloud: true, cid: pc.c, curl: pc.u, epoch: +meta.epoch || Date.now(), rid: pc.c, created: Date.now(), played: Date.now() };
-      worlds.push(entry); saveWorldList();
-    }
-    if (!settings.cloudUrl) { settings.cloudUrl = pc.u; saveSettings(); }
-    if (inGame) quitToMenu();
-    screen = null;
-    startWorld(entry);
-  } catch (e) { setStatus('Could not reach the cloud database (' + e.message + ').'); }
-}
-async function uploadToCloud(w) {
-  if (!goodUrl(settings.cloudUrl)) { mpToast('Set your cloud database URL in Settings first.'); return; }
-  if (!confirm(`Move "${w.name}" to the cloud? Its blocks and signs are uploaded so friends can join any time. Your inventory stays on this device.`)) return;
-  let d = null;
-  try { d = JSON.parse(localStorage.getItem(saveKeyFor(w)) || 'null'); } catch (e) {}
-  const tmp = Object.assign({}, w, { cloud: true, cid: newCid(), curl: settings.cloudUrl.trim().replace(/\/+$/, ''), epoch: Date.now() });
-  try {
-    mpToast('Uploading world...');
-    await cloudReq(tmp.curl, `worlds/${tmp.cid}/meta`, 'PUT', cloudMeta(tmp));
-    let batch = {}, n = 0;
-    const send = async () => { if (n) { await cloudReq(tmp.curl, 'worlds/' + tmp.cid, 'PATCH', batch); batch = {}; n = 0; } };
-    if (d && d.edits) for (const ck in d.edits) {
-      const a = d.edits[ck], c2 = ck.replace(',', '_');
-      for (let i = 0; i + 1 < a.length; i += 2) { batch[`edits/${c2}/${a[i]}`] = a[i + 1]; if (++n >= 2500) await send(); }
-    }
-    if (d && Array.isArray(d.signs)) for (const s of d.signs) { const p = String(s[0]).split(','); batch[`signs/${p[0]}_${p[1]}_${p[2]}`] = { t: cleanSign(s[1]), f: s[2] === 1 ? 1 : 0 }; n++; }
-    await send();
-  } catch (e) { mpToast('Upload failed (' + e.message + '). Your world is unchanged.'); return; }
-  Object.assign(w, { cloud: true, cid: tmp.cid, curl: tmp.curl, epoch: tmp.epoch, rid: tmp.cid });
-  saveWorldList(); renderWorldList();
-  mpToast('Done. "' + w.name + '" is now a cloud world.');
-}
-async function testCloud() {
-  const u = ($('sCloud').value || '').trim().replace(/\/+$/, '');
-  const msg = $('sCloudMsg');
-  if (!goodUrl(u)) { msg.textContent = 'That does not look like a database URL (https://...firebaseio.com).'; return; }
-  msg.textContent = 'Testing...';
-  try { await cloudReq(u, 'worlds/__test', 'GET'); settings.cloudUrl = u; saveSettings(); msg.textContent = 'Connected. Cloud worlds are ready.'; }
-  catch (e) { msg.textContent = e.status === 401 || e.status === 403 ? 'The database refused access. Check the rules (see the steps below).' : 'Could not connect (' + e.message + '). Check the URL.'; }
-}
-$('sCloud').value = settings.cloudUrl || '';
-$('sCloud').addEventListener('keydown', (e) => e.stopPropagation());
-$('sCloud').oninput = (e) => { const v = e.target.value.trim(); if (!v || goodUrl(v)) { settings.cloudUrl = v.replace(/\/+$/, ''); saveSettings(); } };
-$('sCloudTest').onclick = testCloud;
-
-
+// ---------- Cloud worlds (Cloudflare persistent storage) ----------
+let cloudApplying=false,cloudLoading=false,cloudDirty=false,cloudTimer=null,cloudBusy=false,cloudPollBusy=false,cloudPollTimer=null;
+const cloudPending=new Map();
+const CLOUD_API='https://minecraftz-worlds.zaneclark16.workers.dev';
+const isCloud=()=>!!(currentWorld&&currentWorld.cloud);
+const cloudBase=()=>CLOUD_API;
+function cloudCode(w){if(!w||!w.inviteToken)return '';const j=JSON.stringify({u:CLOUD_API,c:w.cid,t:w.inviteToken});return 'MCZ2.'+btoa(j).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function parseCloudCode(s){try{s=String(s||'').trim();const i=s.indexOf('MCZ2.');if(i<0)return null;s=s.slice(i+5).replace(/[^A-Za-z0-9_\-]/g,'').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const o=JSON.parse(atob(s));if(o.u!==CLOUD_API||!/^[a-f0-9]{24}$/.test(String(o.c))||typeof o.t!=='string'||o.t.length<32)return null;return{u:o.u,c:o.c,t:o.t};}catch(e){return null;}}
+function cloudLink(w){const c=cloudCode(w);return c?location.href.split('#')[0]+'#join='+c:'';}
+async function cloudReq(base,path,method='GET',body,token,keepalive){const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),15000),headers={'content-type':'application/json'};if(token)headers.authorization='Bearer '+token;try{const res=await fetch(base+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:ctl.signal,keepalive:!!keepalive});let data=null;try{data=await res.json();}catch(e){}if(!res.ok){const er=new Error(data&&data.error||'HTTP '+res.status);er.status=res.status;throw er;}return data;}finally{clearTimeout(to);}}
+const cloudMeta=w=>({name:w.name,visibility:'private',settings:{seed:w.seed,seedText:w.seedText,mode:w.mode,difficulty:w.difficulty||'normal',mobs:w.mobs!==false,caves:w.caves===true,dayLen:w.dayLen||6,epoch:w.epoch||Date.now()}});
+function cloudQueueBlock(wx,wy,wz,id){const cx=Math.floor(wx/CHUNK_SIZE),cz=Math.floor(wz/CHUNK_SIZE),lx=((wx%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE,lz=((wz%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE;cloudPending.set('edits/'+cx+'_'+cz+'/'+((wy*CHUNK_SIZE+lz)*CHUNK_SIZE+lx),id);cloudDirty=true;}
+function cloudQueueSign(key,sign){const p=key.split(',');cloudPending.set('signs/'+p[0]+'_'+p[1]+'_'+p[2],sign?{t:sign.text,f:sign.face}:null);cloudDirty=true;}
+const pendKey=w=>'minecraftz_cpend_'+w.cid;
+function cloudPersistPend(w){cloudDirty=false;try{if(cloudPending.size)localStorage.setItem(pendKey(w),JSON.stringify([...cloudPending]));else localStorage.removeItem(pendKey(w));}catch(e){}}
+function cloudRestorePend(w){let a=null;try{a=JSON.parse(localStorage.getItem(pendKey(w))||'null');}catch(e){}if(!Array.isArray(a))return;for(const p of a)if(Array.isArray(p)&&typeof p[0]==='string'){cloudApply('/'+p[0],p[1]);cloudPending.set(p[0],p[1]);}cloudDirty=true;}
+async function cloudFlush(keepalive){if(!cloudPending.size||!isCloud()||currentWorld.cloudRole==='visitor'||(cloudBusy&&!keepalive))return;const w=currentWorld,edits=[],signsOut=[],sent=new Map();for(const[k,v]of cloudPending){const p=k.split('/');if(p[0]==='edits'&&p.length===3)edits.push({chunk:p[1],blockIndex:+p[2],value:String(v)});else if(p[0]==='signs'&&p.length===2)signsOut.push({coords:p[1],value:JSON.stringify(v)});sent.set(k,v);}cloudBusy=true;try{if(edits.length)await cloudReq(CLOUD_API,'/api/worlds/'+w.cid+'/edits','POST',{edits},w.cloudToken,keepalive);if(signsOut.length)await cloudReq(CLOUD_API,'/api/worlds/'+w.cid+'/signs','POST',{signs:signsOut},w.cloudToken,keepalive);for(const[k,v]of sent)if(cloudPending.get(k)===v)cloudPending.delete(k);if(currentWorld===w){cloudPersistPend(w);$('cloudDot').textContent='';}}catch(e){if(currentWorld===w)$('cloudDot').textContent='Cloud: '+e.message+' (retrying)';}finally{cloudBusy=false;}}
+function cloudSetCell(ck,idx,id){const m=/^(-?\d+)_(-?\d+)$/.exec(ck);idx=+idx;if(!m||!Number.isInteger(idx)||idx<0||idx>=CHUNK_SIZE*CHUNK_HEIGHT*CHUNK_SIZE)return;id=+id;if(!Number.isInteger(id)||id<0||(id!==0&&!BLOCK_MAP[id]))return;const cx=+m[1],cz=+m[2],lx=idx%CHUNK_SIZE,lz=Math.floor(idx/CHUNK_SIZE)%CHUNK_SIZE,y=Math.floor(idx/(CHUNK_SIZE*CHUNK_SIZE));if(y<1||y>=CHUNK_HEIGHT)return;const wx=cx*CHUNK_SIZE+lx,wz=cz*CHUNK_SIZE+lz,ch=chunks.get(chunkKey(cx,cz));if(ch){if(ch.data[idx]===id)return;cloudApplying=true;try{setBlock(wx,y,wz,id);}finally{cloudApplying=false;}}else{const ek=chunkKey(cx,cz);let ed=edits.get(ek);if(!ed){ed=new Map();edits.set(ek,ed);}ed.set(idx,id);const tk=wx+','+y+','+wz;if(id===11)torches.set(tk,[wx,y,wz]);else torches.delete(tk);}if(id===14&&!signs.has(wx+','+y+','+wz))signs.set(wx+','+y+','+wz,{text:'',face:0});}
+function cloudSetSign(k,v){const m=/^(-?\d+)_(\d+)_(-?\d+)$/.exec(k);if(!m)return;const key=m[1]+','+m[2]+','+m[3];if(v===null||typeof v!=='object')signs.delete(key);else signs.set(key,{text:cleanSign(v.t),face:v.f===1?1:0});markChunkDirty(Math.floor(+m[1]/CHUNK_SIZE),Math.floor(+m[3]/CHUNK_SIZE));}
+function cloudApply(path,data){const p=String(path).split('/').filter(Boolean);if(!p.length){if(data&&typeof data==='object'){if(data.edits)cloudApply('/edits',data.edits);if(data.signs)cloudApply('/signs',data.signs);}}else if(p[0]==='edits'){if(p.length===1&&Array.isArray(data))for(const e of data)cloudSetCell(e.chunk,e.blockIndex,e.value);else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudApply('/edits/'+k,data[k]);else if(p.length===2&&data&&typeof data==='object')for(const i in data)cloudSetCell(p[1],i,data[i]);else if(p.length===3&&data!==null)cloudSetCell(p[1],p[2],data);}else if(p[0]==='signs'){if(p.length===1&&Array.isArray(data))for(const e of data){let v=null;try{v=JSON.parse(e.value);}catch(x){}cloudSetSign(e.coords,v);}else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudSetSign(k,data[k]);else if(p.length===2){let v=data;if(typeof v==='string'){try{v=JSON.parse(v);}catch(e){v=null;}}cloudSetSign(p[1],v);}}}
+function cloudApplySnapshot(d){if(!d)return;if(Array.isArray(d.edits))cloudApply('/edits',d.edits);if(Array.isArray(d.signs))cloudApply('/signs',d.signs);}
+async function cloudPoll(){if(!isCloud()||cloudPollBusy)return;const w=currentWorld;cloudPollBusy=true;try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+w.cid,'GET',undefined,w.cloudToken);if(currentWorld===w)cloudApplySnapshot(d);}catch(e){if(currentWorld===w)$('cloudDot').textContent='Cloud: '+e.message;}finally{cloudPollBusy=false;}}
+function cloudStart(){cloudStop();const w=currentWorld;cloudTimer=setInterval(()=>{cloudFlush(false);if(cloudDirty)cloudPersistPend(w);},700);cloudPoll();cloudPollTimer=setInterval(cloudPoll,2500);}
+function cloudStop(){clearInterval(cloudTimer);cloudTimer=null;clearInterval(cloudPollTimer);cloudPollTimer=null;}
+window.addEventListener('pagehide',()=>{if(isCloud())cloudFlush(true);});
+async function startCloudWorld(entry){if(cloudLoading)return;cloudLoading=true;mpToast('Loading cloud world...');try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+entry.cid,'GET',undefined,entry.cloudToken);if(!d||!d.meta)throw Error('World data missing.');const c=d.meta.settings||{};Object.assign(entry,{name:String(d.meta.name||entry.name).slice(0,32),seed:Number(c.seed)||entry.seed,seedText:String(c.seedText||c.seed||entry.seed),mode:c.mode==='survival'?'survival':'creative',difficulty:c.difficulty||'normal',mobs:c.mobs!==false,caves:c.caves===true,dayLen:c.dayLen||6,cloudRole:d.role||entry.cloudRole||'visitor'});cloudLoading=false;startWorld(entry,d);lockGame();}catch(e){cloudLoading=false;mpToast('Could not open cloud world: '+e.message);}}
+async function createCloudEntry(entry){try{const d=await cloudReq(CLOUD_API,'/api/worlds','POST',{name:entry.name,visibility:'private',settings:cloudMeta(entry).settings});Object.assign(entry,{cloud:true,cid:d.id,curl:CLOUD_API,cloudToken:d.ownerToken,ownerToken:d.ownerToken,cloudRole:'owner',epoch:Date.now(),rid:d.id});return true;}catch(e){mpToast('Could not create cloud world: '+e.message);return false;}}
+async function createCloudInvite(w,role='builder'){const d=await cloudReq(CLOUD_API,'/api/worlds/'+w.cid+'/invites','POST',{role},w.ownerToken||w.cloudToken);w.inviteToken=d.token;saveWorldList();return cloudLink(w);}
+async function joinCloudCode(code,setStatus){const pc=parseCloudCode(code);if(!pc){setStatus('That is not a valid MinecraftZ cloud invite.');return;}setStatus('Checking invite...');try{const j=await cloudReq(CLOUD_API,'/api/worlds/'+pc.c+'/join','POST',{invite:pc.t});let w=worlds.find(x=>x.cid===pc.c);if(!w){w={id:newId(),name:String(j.meta.name||'Cloud world').slice(0,32),seed:0,seedText:'',mode:'creative',difficulty:'normal',mobs:true,caves:false,dayLen:6,cloud:true,cid:pc.c,curl:CLOUD_API,created:Date.now(),played:Date.now()};worlds.push(w);}Object.assign(w,{cloud:true,cid:pc.c,curl:CLOUD_API,cloudToken:pc.t,inviteToken:pc.t,cloudRole:j.role});saveWorldList();if(inGame)quitToMenu();screen=null;startCloudWorld(w);}catch(e){setStatus(e.message||'Could not join that world.');}}
+async function uploadToCloud(w){if(!confirm('Create a cloud copy of "'+w.name+'"? Your local world will remain available.'))return;let d=null;try{d=JSON.parse(localStorage.getItem(saveKeyFor(w))||'null');}catch(e){}const tmp=Object.assign({},w);if(!await createCloudEntry(tmp))return;try{const edits=[],ss=[];if(d&&d.edits)for(const ck in d.edits){const ar=d.edits[ck],chunk=ck.replace(',','_');for(let i=0;i+1<ar.length;i+=2)edits.push({chunk,blockIndex:ar[i],value:String(ar[i+1])});}if(d&&Array.isArray(d.signs))for(const q of d.signs){const p=String(q[0]).split(',');ss.push({coords:p.join('_'),value:JSON.stringify({t:cleanSign(q[1]),f:q[2]===1?1:0})});}for(let i=0;i<edits.length;i+=250)await cloudReq(CLOUD_API,'/api/worlds/'+tmp.cid+'/edits','POST',{edits:edits.slice(i,i+250)},tmp.ownerToken);for(let i=0;i<ss.length;i+=100)await cloudReq(CLOUD_API,'/api/worlds/'+tmp.cid+'/signs','POST',{signs:ss.slice(i,i+100)},tmp.ownerToken);}catch(e){mpToast('Cloud copy failed: '+e.message);return;}Object.assign(w,{cloud:true,cid:tmp.cid,curl:CLOUD_API,cloudToken:tmp.ownerToken,ownerToken:tmp.ownerToken,cloudRole:'owner',epoch:tmp.epoch,rid:tmp.cid});saveWorldList();renderWorldList();mpToast('Cloud copy created. Your local world is still safe.');}
+async function testCloud(){const m=$('sCloudMsg');m.textContent='Testing Cloudflare...';try{const d=await cloudReq(CLOUD_API,'/api/health');m.textContent=d.ok?'Connected to MinecraftZ cloud worlds.':'Unexpected response.';}catch(e){m.textContent='Could not connect: '+e.message;}}
+$('sCloud').value=CLOUD_API;$('sCloud').addEventListener('keydown',e=>e.stopPropagation());$('sCloudTest').onclick=testCloud;
 // ---------- Multiplayer (seed rooms over WebRTC, matchmaking by PeerJS) ----------
 // The first player in a seed claims the room id and hosts; everyone else with that seed connects to them.
 const MP_VER = 2;
