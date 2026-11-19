@@ -147,11 +147,11 @@
   body:not(.ingame) #hearts, body:not(.ingame) #prompt, body:not(.ingame) #mineBar, body:not(.ingame) #tags { display: none !important; }
   .row input[type=text] { width: 190px; background: #444; color: #fff; border: 1px solid #888; padding: 5px 7px; border-radius: 4px; font-family: inherit; }
   .hint { font-size: 12px; color: #aaa; margin: 4px 0 8px; line-height: 1.4; }
-  .worldrow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 5px 0; background: #383838; border-radius: 6px; }
-  .worldrow .winfo { flex: 1; min-width: 0; }
+  .worldrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; margin: 5px 0; background: #383838; border-radius: 6px; box-sizing: border-box; }
+  .worldrow .winfo { flex: 1 1 100%; min-width: 0; }
   .worldrow .winfo b { display: block; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .worldrow .winfo span { font-size: 12px; color: #aaa; }
-  .worldrow .btn { padding: 4px 11px; font-size: 13px; margin: 0; }
+  .worldrow .winfo span { display: block; font-size: 12px; line-height: 1.4; color: #aaa; overflow-wrap: anywhere; }
+  .worldrow .btn { flex: 0 0 auto; white-space: nowrap; padding: 4px 11px; font-size: 13px; margin: 0; }
   #worldList { max-height: 38vh; overflow: auto; }
   #pauseSeed { color: #ffd166; cursor: pointer; text-decoration: underline dotted; }
   #tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
