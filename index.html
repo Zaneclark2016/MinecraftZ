@@ -220,7 +220,7 @@
 <div id="joinPanel">
   <div class="panel" style="width:min(94vw,440px)">
     <h2>Join by Code</h2>
-    <div class="hint">Paste a join link or cloud code (long, starts with MCZ1.) to join a cloud world any time. For a normal world, enter its short code (like ABCD-1234); the owner must be online in it.</div>
+    <div class="hint">Paste a join link or cloud code (long, starts with MCZ2.) to join a cloud world any time. For a normal world, enter its short code (like ABCD-1234); the owner must be online in it.</div>
     <div class="row"><span>Join code</span><input type="text" id="jcCode" placeholder="Code or link" style="width:230px"></div>
     <div class="hint" id="jcStatus"></div>
     <div style="text-align:center;margin-top:12px"><button class="btn primary" id="jcGo">Join</button><button class="btn" id="jcBack">Back</button></div>
@@ -3134,7 +3134,7 @@ $('mmJoin').onclick = () => { $('jcCode').value = ''; $('jcStatus').textContent 
 $('jcBack').onclick = () => closeScreen();
 $('jcCode').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('jcGo').click(); });
 $('jcGo').onclick = () => {
-  if ($('jcCode').value.indexOf('MCZ1.') >= 0) { joinCloudCode($('jcCode').value, (t) => { $('jcStatus').textContent = t; }); return; }
+  if ($('jcCode').value.indexOf('MCZ2.') >= 0) { joinCloudCode($('jcCode').value, (t) => { $('jcStatus').textContent = t; }); return; }
   let c = $('jcCode').value.trim().toUpperCase().replace(/\s+/g, '');
   if (c.length === 8 && !c.includes('-')) c = c.slice(0, 4) + '-' + c.slice(4);
   if (!ID_RE.test(c)) { $('jcStatus').textContent = 'That is not a join code. It looks like ABCD-1234.'; return; }
