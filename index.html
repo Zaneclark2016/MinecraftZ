@@ -5142,7 +5142,7 @@ function loop(now) {
     $('tFly').style.display = isSurvival() ? 'none' : 'flex';
     if (isSurvival() && player.noclip) { player.noclip = false; document.body.classList.remove('noclipping'); }
   }
-  document.getElementById('mpLine').textContent = MP.role === 'none' ? '' : (MP.role === 'host' ? 'Hosting' : 'Joined') + ' · ' + (MP.players.size + 1) + ' online';
+  document.getElementById('mpLine').textContent = MP.role === 'none' ? (inGame && settings.online && !brawlWorld ? 'Online: ' + MP.status : '') : (MP.role === 'host' ? 'Hosting' : 'Joined') + ' · ' + (MP.players.size + 1) + ' online';
 
   // Stream chunks around player & build max 1 chunk per frame
   const pcx = Math.floor(player.x / CHUNK_SIZE);
@@ -5425,6 +5425,13 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 initMenu();
+// Wake the relay early (free hosting sleeps when idle and takes up to a minute to start)
+(function wakeRelay() {
+  const u = relayUrl().replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
+  if (!/^https?:/.test(u)) return;
+  const ping = () => { try { fetch(u, { mode: 'no-cors', cache: 'no-store' }).catch(() => {}); } catch (e) {} };
+  ping(); setTimeout(ping, 20000);
+})();
 (function joinFromLink() {
   const m = /[#&]join=([^&]+)/.exec(location.hash || '');
   if (!m) return;
