@@ -64,7 +64,16 @@ export default {
           })
         });
         if (!result.ok) return cors(json({ error: "Could not create world." }, 500));
+        if (body.visibility === "public") {
+          await env.REGISTRY.get(env.REGISTRY.idFromName("registry")).fetch("https://registry.internal/touch", {
+            method: "POST", body: JSON.stringify({ id, name: String(body.name || "My MinecraftZ World").slice(0, 48), mode: String((body.settings && body.settings.mode) || "creative").slice(0, 12) })
+          });
+        }
         return cors(json({ id, ownerToken }));
+      }
+
+      if (url.pathname === "/api/public" && request.method === "GET") {
+        return cors(await env.REGISTRY.get(env.REGISTRY.idFromName("registry")).fetch("https://registry.internal/list"));
       }
 
       if (parts[0] === "api" && parts[1] === "worlds" && validId(parts[2])) {
@@ -75,6 +84,16 @@ export default {
 
         if (parts.length === 3 && request.method === "GET") {
           return cors(await stub.fetch("https://world.internal/world", { headers }));
+        }
+        if (parts[3] === "ping" && request.method === "POST") {
+          const r = await stub.fetch("https://world.internal/ping", { method: "POST", headers });
+          const info = await r.json();
+          if (r.ok && info.visibility === "public") {
+            await env.REGISTRY.get(env.REGISTRY.idFromName("registry")).fetch("https://registry.internal/touch", {
+              method: "POST", body: JSON.stringify({ id, name: info.name, mode: info.mode })
+            });
+          }
+          return cors(json({ ok: r.ok }, r.ok ? 200 : r.status));
         }
         if (parts[3] === "join" && request.method === "POST") {
           return cors(await stub.fetch("https://world.internal/join", {
@@ -151,6 +170,7 @@ export class World {
 
       if (url.pathname === "/join" && request.method === "POST") {
         const body = await request.json();
+        if (meta.visibility === "public" && !body.invite) return json({ id: world.id, meta, role: "builder" });
         const tokenHash = await hashToken(String(body.invite || ""));
         const invite = this.sql.exec("SELECT role FROM invites WHERE token_hash = ?", tokenHash).toArray()[0];
         if (!invite) return json({ error: "That invite code is invalid or has been revoked." }, 403);
@@ -164,7 +184,12 @@ export class World {
       const invite = tokenHash
         ? this.sql.exec("SELECT role FROM invites WHERE token_hash = ?", tokenHash).toArray()[0]
         : null;
-      const role = isOwner ? "owner" : invite?.role || null;
+      const role = isOwner ? "owner" : invite?.role || (meta.visibility === "public" ? "builder" : null);
+
+      if (url.pathname === "/ping" && request.method === "POST") {
+        if (!role) return json({ error: "Not allowed." }, 403);
+        return json({ ok: true, visibility: meta.visibility, name: meta.name, mode: (meta.settings && meta.settings.mode) || "creative" });
+      }
 
       if (url.pathname === "/players" && request.method === "POST") {
         if (!role) return json({ error: "An invite is required to share player presence." }, 403);
@@ -244,5 +269,31 @@ export class World {
     } catch (error) {
       return json({ error: "World request failed.", detail: String(error).slice(0, 160) }, 400);
     }
+  }
+}
+
+export class Registry {
+  constructor(ctx) {
+    this.sql = ctx.storage.sql;
+    this.sql.exec("CREATE TABLE IF NOT EXISTS pub (id TEXT PRIMARY KEY, name TEXT NOT NULL, mode TEXT NOT NULL, created INTEGER NOT NULL, seen INTEGER NOT NULL)");
+  }
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/touch" && request.method === "POST") {
+      const b = await request.json();
+      const now = Date.now();
+      this.sql.exec(
+        "INSERT INTO pub (id, name, mode, created, seen) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, mode=excluded.mode, seen=excluded.seen",
+        String(b.id), String(b.name || "World").replace(/[\u0000-\u001f]/g, "").slice(0, 48), String(b.mode || "creative").slice(0, 12), now, now
+      );
+      return json({ ok: true });
+    }
+    if (url.pathname === "/list") {
+      const now = Date.now();
+      this.sql.exec("DELETE FROM pub WHERE seen < ?", now - 30 * 86400000);
+      const rows = this.sql.exec("SELECT id, name, mode, created, seen FROM pub ORDER BY seen DESC LIMIT 40").toArray();
+      return json({ worlds: rows, now });
+    }
+    return json({ error: "Not found." }, 404);
   }
 }

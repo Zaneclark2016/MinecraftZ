@@ -201,8 +201,8 @@
     <div class="hint" id="cBrawlHint" style="display:none">Brawl: fight waves of mobs in a closed 20x20 arena. Earn points for every kill and spend them in the shop between waves. The other world options are ignored.</div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
     <div class="row"><span>Caves &amp; Ores</span><input type="checkbox" id="cCaves" checked></div>
-    <div class="row"><span>Cloud world (friends can join while you are away)</span><input type="checkbox" id="cCloud"></div>
-    <div class="hint" id="cCloudHint">On by default: the world is saved on MinecraftZ cloud so friends can join any time. Untick to keep it only on this device. If the cloud can't be reached, it is saved here instead.</div>
+    <div class="row"><span>Who can join</span><select id="cVis"><option value="private" selected>Private (join by code)</option><option value="public">Public (listed on the Join page)</option><option value="solo">Solo (only you)</option></select></div>
+    <div class="hint" id="cVisHint">Private and Public worlds are saved on MinecraftZ cloud, so friends can join any time. Public worlds appear in the Join list and anyone can build in them. Solo is saved only on this device.</div>
     <div class="row"><span>Mobs (Survival)</span><input type="checkbox" id="cMobs" checked></div>
     <div class="row"><span>Day Length</span><input type="range" id="cDay" min="2" max="20" step="1" value="6"><span class="val" id="cvDay">6 min</span></div>
     <div class="hint">World rules are fixed when the world is created, and everyone who joins uses them.</div>
@@ -219,7 +219,11 @@
 </div>
 <div id="joinPanel">
   <div class="panel" style="width:min(94vw,440px)">
-    <h2>Join by Code</h2>
+    <h2>Join a World</h2>
+    <h3 style="margin:8px 0 4px;font-size:15px">Public worlds</h3>
+    <div id="pubList" style="max-height:34vh;overflow:auto;margin-bottom:6px"></div>
+    <div style="text-align:center"><button class="btn" id="pubRefresh">Refresh list</button></div>
+    <h3 style="margin:12px 0 4px;font-size:15px">Join by code</h3>
     <div class="hint">Paste a join link or cloud code (long, starts with MCZ2.) to join a cloud world any time. For a normal world, enter its short code (like ABCD-1234); the owner must be online in it.</div>
     <div class="row"><span>Join code</span><input type="text" id="jcCode" placeholder="Code or link" style="width:230px"></div>
     <div class="hint" id="jcStatus"></div>
@@ -2067,7 +2071,7 @@ $('quitBtn').onclick = (e) => { e.stopPropagation(); quitToMenu(); };
 $('settingsBack').onclick = () => closeScreen();
 $('invClose').onclick = () => closeScreen();
 $('mmSettings').onclick = () => openScreen('settings');
-$('mmNew').onclick = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; $('cName').value = 'New World'; $('cSeed').value = ''; $('cMobs').checked = true; $('cCaves').checked = true; $('cCloud').checked = true; $('cDay').value = 6; $('cvDay').textContent = '6 min'; openScreen('create'); };
+$('mmNew').onclick = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; $('cName').value = 'New World'; $('cSeed').value = ''; $('cMobs').checked = true; $('cCaves').checked = true; $('cVis').value = 'private'; $('cDay').value = 6; $('cvDay').textContent = '6 min'; openScreen('create'); };
 $('cCancel').onclick = () => closeScreen();
 $('cMode').onchange = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; };
 $('cPlay').onclick = () => createAndPlay();
@@ -2573,7 +2577,9 @@ async function createAndPlay() {
   const isB = $('cMode').value === 'brawl';
   const entry = { id: newId(), name, seed: ps.seed, seedText: ps.text, mode: isB ? 'survival' : $('cMode').value, difficulty: isB ? 'normal' : $('cDiff').value, mobs: isB ? true : $('cMobs').checked, caves: isB ? false : $('cCaves').checked, dayLen: +$('cDay').value, rid: newRid(), created: Date.now(), played: Date.now() };
   if (isB) { entry.brawl = true; entry.best = 0; }
-  if ($('cCloud').checked && !isB) {
+  entry.vis = isB ? 'solo' : $('cVis').value;
+  if (entry.vis === 'solo') entry.solo = true;
+  if (entry.vis !== 'solo') {
     $('cPlay').disabled = true;
     const ok = await createCloudEntry(entry);
     $('cPlay').disabled = false;
@@ -2729,9 +2735,11 @@ function cloudVisiblePlayers() {
   for (const [id, e] of cloudPlayers) { if (now - e.seen > 9000) { cloudPlayers.delete(id); continue; } out.push(e); }
   return out;
 }
-let cloudPresT = 0;
+let cloudPresT = 0, cloudPingT = 0;
 function cloudSendPresence(dt) {
   if (!isCloud() || currentWorld.cloudRole === 'visitor' || !locked) return;
+  cloudPingT -= dt;
+  if (cloudPingT <= 0 && currentWorld.vis === 'public') { cloudPingT = 60; cloudReq(CLOUD_API, '/api/worlds/' + currentWorld.cid + '/ping', 'POST', {}, currentWorld.ownerToken || currentWorld.cloudToken).catch(() => {}); }
   cloudPresT -= dt; if (cloudPresT > 0) return; cloudPresT = 2;
   const w = currentWorld;
   cloudReq(CLOUD_API, '/api/worlds/' + w.cid + '/signs', 'POST', { signs: [{ coords: '~p_' + settings.pid, value: JSON.stringify({ n: myName(), x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch, t: Date.now() }) }] }, w.ownerToken || w.cloudToken).catch(() => {});
@@ -2744,7 +2752,7 @@ function cloudStart(){cloudStop();const w=currentWorld;cloudTimer=setInterval(()
 function cloudStop(){cloudPlayers.clear();clearInterval(cloudTimer);cloudTimer=null;clearInterval(cloudPollTimer);cloudPollTimer=null;}
 window.addEventListener('pagehide',()=>{if(isCloud())cloudFlush(true);});
 async function startCloudWorld(entry){if(cloudLoading)return;cloudLoading=true;mpToast('Loading cloud world...');try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+entry.cid,'GET',undefined,entry.cloudToken);if(!d||!d.meta)throw Error('World data missing.');const c=d.meta.settings||{};Object.assign(entry,{name:String(d.meta.name||entry.name).slice(0,32),seed:Number(c.seed)||entry.seed,seedText:String(c.seedText||c.seed||entry.seed),mode:c.mode==='survival'?'survival':'creative',difficulty:c.difficulty||'normal',mobs:c.mobs!==false,caves:c.caves===true,dayLen:c.dayLen||6,cloudRole:d.role||entry.cloudRole||'visitor'});cloudLoading=false;startWorld(entry,d);lockGame();}catch(e){cloudLoading=false;mpToast('Could not open cloud world: '+e.message);}}
-async function createCloudEntry(entry){try{const d=await cloudReq(CLOUD_API,'/api/worlds','POST',{name:entry.name,visibility:'private',settings:cloudMeta(entry).settings});Object.assign(entry,{cloud:true,cid:d.id,curl:CLOUD_API,cloudToken:d.ownerToken,ownerToken:d.ownerToken,cloudRole:'owner',epoch:Date.now(),rid:d.id});return true;}catch(e){mpToast('Could not create cloud world: '+e.message);return false;}}
+async function createCloudEntry(entry){try{const d=await cloudReq(CLOUD_API,'/api/worlds','POST',{name:entry.name,visibility:entry.vis==='public'?'public':'private',settings:cloudMeta(entry).settings});Object.assign(entry,{cloud:true,cid:d.id,curl:CLOUD_API,cloudToken:d.ownerToken,ownerToken:d.ownerToken,cloudRole:'owner',epoch:Date.now(),rid:d.id});return true;}catch(e){mpToast('Could not create cloud world: '+e.message);return false;}}
 async function createCloudInvite(w,role='builder'){const d=await cloudReq(CLOUD_API,'/api/worlds/'+w.cid+'/invites','POST',{role},w.ownerToken||w.cloudToken);w.inviteToken=d.token;saveWorldList();return cloudLink(w);}
 async function joinCloudCode(code,setStatus){const pc=parseCloudCode(code);if(!pc){setStatus('That is not a valid MinecraftZ cloud invite.');return;}setStatus('Checking invite...');try{const j=await cloudReq(CLOUD_API,'/api/worlds/'+pc.c+'/join','POST',{invite:pc.t});let w=worlds.find(x=>x.cid===pc.c);if(!w){w={id:newId(),name:String(j.meta.name||'Cloud world').slice(0,32),seed:0,seedText:'',mode:'creative',difficulty:'normal',mobs:true,caves:false,dayLen:6,cloud:true,cid:pc.c,curl:CLOUD_API,created:Date.now(),played:Date.now()};worlds.push(w);}Object.assign(w,{cloud:true,cid:pc.c,rid:pc.c,curl:CLOUD_API,cloudToken:pc.t,inviteToken:pc.t,cloudRole:j.role});saveWorldList();if(inGame)quitToMenu();screen=null;startCloudWorld(w);}catch(e){setStatus(e.message||'Could not join that world.');}}
 async function uploadToCloud(w){if(!confirm('Create a cloud copy of "'+w.name+'"? Your local world will remain available.'))return;let d=null;try{d=JSON.parse(localStorage.getItem(saveKeyFor(w))||'null');}catch(e){}const tmp=Object.assign({},w);if(!await createCloudEntry(tmp))return;try{const edits=[],ss=[];if(d&&d.edits)for(const ck in d.edits){const ar=d.edits[ck],chunk=ck.replace(',','_');for(let i=0;i+1<ar.length;i+=2)edits.push({chunk,blockIndex:ar[i],value:String(ar[i+1])});}if(d&&Array.isArray(d.signs))for(const q of d.signs){const p=String(q[0]).split(',');ss.push({coords:p.join('_'),value:JSON.stringify({t:cleanSign(q[1]),f:q[2]===1?1:0})});}for(let i=0;i<edits.length;i+=250)await cloudReq(CLOUD_API,'/api/worlds/'+tmp.cid+'/edits','POST',{edits:edits.slice(i,i+250)},tmp.ownerToken);for(let i=0;i<ss.length;i+=100)await cloudReq(CLOUD_API,'/api/worlds/'+tmp.cid+'/signs','POST',{signs:ss.slice(i,i+100)},tmp.ownerToken);}catch(e){mpToast('Cloud copy failed: '+e.message);return;}Object.assign(w,{cloud:true,cid:tmp.cid,curl:CLOUD_API,cloudToken:tmp.ownerToken,ownerToken:tmp.ownerToken,cloudRole:'owner',epoch:tmp.epoch,rid:tmp.cid});saveWorldList();renderWorldList();mpToast('Cloud copy created. Your local world is still safe.');}
@@ -2779,6 +2787,7 @@ function mpSummary() {
 
 function mpStart() {
   mpStop();
+  if (currentWorld && currentWorld.solo) { MP.status = 'solo world (nobody else can join)'; return; }
   if (!settings.online) { MP.status = 'off (turn it on in Settings)'; return; }
   if (typeof Peer === 'undefined') { MP.status = 'unavailable (could not load the multiplayer library)'; return; }
   mpTryHost(++MP.gen);
@@ -3285,7 +3294,36 @@ function mpPeek(rid, cb) {
     conn.on('error', () => finish(null));
   });
 }
-$('mmJoin').onclick = () => { $('jcCode').value = ''; $('jcStatus').textContent = ''; openScreen('joincode'); };
+$('mmJoin').onclick = () => { $('jcCode').value = ''; $('jcStatus').textContent = ''; openScreen('joincode'); loadPublic(); };
+async function loadPublic() {
+  const box = $('pubList'); box.textContent = 'Looking for public worlds...'; box.style.color = '#bbb'; box.style.fontSize = '13px';
+  try {
+    const d = await cloudReq(CLOUD_API, '/api/public');
+    const now = d.now || Date.now();
+    box.textContent = '';
+    if (!d.worlds || !d.worlds.length) { box.textContent = 'No public worlds yet. Create one and set it to Public.'; return; }
+    for (const pw of d.worlds) {
+      const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 2px;border-bottom:1px solid #333';
+      const live = now - pw.seen < 300000;
+      const lab = document.createElement('span'); lab.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      lab.textContent = pw.name + ' (' + pw.mode + ') ' + (live ? '- active now' : '- seen ' + timeAgo(pw.seen));
+      const bt = document.createElement('button'); bt.className = 'btn'; bt.style.cssText = 'margin:0;padding:3px 12px'; bt.textContent = 'Join';
+      bt.onclick = () => joinPublic(pw);
+      row.append(lab, bt); box.appendChild(row);
+    }
+  } catch (e) { box.textContent = 'Could not load public worlds: ' + (e.message || e) + ' (the cloud may need updating or be blocked here)'; }
+}
+$('pubRefresh').onclick = loadPublic;
+function joinPublic(pw) {
+  $('jcStatus').textContent = 'Joining...';
+  let w = worlds.find(x => x.cid === pw.id);
+  if (!w) { w = { id: newId(), name: String(pw.name).slice(0, 32), seed: 0, seedText: '', mode: 'creative', difficulty: 'normal', mobs: true, caves: false, dayLen: 6, cloud: true, cid: pw.id, curl: CLOUD_API, created: Date.now(), played: Date.now() }; worlds.push(w); }
+  Object.assign(w, { cloud: true, cid: pw.id, rid: pw.id, curl: CLOUD_API, vis: 'public', cloudRole: w.cloudRole === 'owner' ? 'owner' : 'builder' });
+  saveWorldList();
+  if (inGame) quitToMenu();
+  screen = null;
+  startCloudWorld(w);
+}
 $('jcBack').onclick = () => closeScreen();
 $('jcCode').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('jcGo').click(); });
 $('jcGo').onclick = () => {
