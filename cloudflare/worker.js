@@ -79,14 +79,30 @@ export default {
         if (request.method === "POST") body = await request.json().catch(() => ({}));
         user = String(body.username || url.searchParams.get("u") || "");
         if (!/^[A-Za-z0-9_]{3,16}$/.test(user)) return cors(json({ error: "Usernames are 3 to 16 letters, numbers or underscores." }, 400));
-        if (!["register", "login", "logout", "data"].includes(action)) return cors(json({ error: "Not found." }, 404));
-        if ((action === "register" || action === "login") && (typeof body.password !== "string" || body.password.length < 6 || body.password.length > 100)) {
+        if (!["register", "login", "logout", "data", "rename"].includes(action)) return cors(json({ error: "Not found." }, 404));
+        if ((action === "register" || action === "login" || action === "rename") && (typeof body.password !== "string" || body.password.length < 6 || body.password.length > 100)) {
           return cors(json({ error: "Passwords need 6 to 100 characters." }, 400));
         }
         const stub = env.ACCOUNTS.get(env.ACCOUNTS.idFromName("u:" + user.toLowerCase()));
         const headers = new Headers({ "content-type": "application/json" });
         const auth = request.headers.get("authorization");
         if (auth) headers.set("authorization", auth);
+        if (action === "rename") {
+          const nu = String(body.newUsername || "");
+          if (!/^[A-Za-z0-9_]{3,16}$/.test(nu)) return cors(json({ error: "Usernames are 3 to 16 letters, numbers or underscores." }, 400));
+          const call = (s, path, payload) => s.fetch("https://account.internal/" + path, { method: "POST", headers, body: JSON.stringify(payload) });
+          if (nu.toLowerCase() === user.toLowerCase()) {
+            return cors(await call(stub, "recase", { username: user, password: body.password, newUsername: nu }));
+          }
+          const ex = await call(stub, "export", { username: user, password: body.password });
+          if (!ex.ok) return cors(ex);
+          const exported = await ex.json();
+          const newStub = env.ACCOUNTS.get(env.ACCOUNTS.idFromName("u:" + nu.toLowerCase()));
+          const im = await call(newStub, "import", { username: nu, salt: exported.salt, hash: exported.hash, data: exported.data });
+          if (!im.ok) return cors(im);
+          await call(stub, "close", { username: user });
+          return cors(im);
+        }
         const res = await stub.fetch("https://account.internal/" + action + "?method=" + request.method, {
           method: "POST", headers, body: JSON.stringify({ ...body, username: user })
         });
@@ -385,7 +401,35 @@ export class Account {
         return json({ ok: true, username: row.username, token: await this.newSession(), worlds: JSON.parse(row.data || "[]") });
       }
 
+      if (action === "import") {
+        if (row) return json({ error: "That username is taken." }, 409);
+        this.sql.exec("INSERT INTO acct (id, username, salt, hash, created, data) VALUES (1, ?, ?, ?, ?, ?)", body.username, String(body.salt), String(body.hash), Date.now(), String(body.data || "[]"));
+        return json({ ok: true, username: body.username, token: await this.newSession(), worlds: JSON.parse(body.data || "[]") });
+      }
+
       if (!row || !(await this.authed(request))) return json({ error: "Please log in again." }, 401);
+
+      if (action === "export" || action === "recase") {
+        if (row.locked_until > Date.now()) return json({ error: "Too many wrong tries. Wait a few minutes and try again." }, 429);
+        const h = await pbkdf2Hex(String(body.password || ""), row.salt);
+        if (!sameString(h, row.hash)) {
+          const fails = row.fails + 1;
+          this.sql.exec("UPDATE acct SET fails = ?, locked_until = ? WHERE id = 1", fails >= 5 ? 0 : fails, fails >= 5 ? Date.now() + 15 * 60000 : 0);
+          return json({ error: "Wrong password." }, 403);
+        }
+        this.sql.exec("UPDATE acct SET fails = 0, locked_until = 0 WHERE id = 1");
+        if (action === "recase") {
+          this.sql.exec("UPDATE acct SET username = ? WHERE id = 1", body.newUsername);
+          return json({ ok: true, username: body.newUsername, worlds: JSON.parse(row.data || "[]") });
+        }
+        return json({ ok: true, salt: row.salt, hash: row.hash, data: row.data });
+      }
+
+      if (action === "close") {
+        this.sql.exec("DELETE FROM acct WHERE id = 1");
+        this.sql.exec("DELETE FROM sessions");
+        return json({ ok: true });
+      }
 
       if (action === "logout") {
         const auth = request.headers.get("authorization") || "";

@@ -233,7 +233,13 @@
       <div class="row"><span>Password</span><input type="password" id="acPass" maxlength="100" autocomplete="current-password" style="width:190px"></div>
       <div style="text-align:center;margin-top:10px"><button class="btn primary" id="acLogin">Log in</button><button class="btn" id="acCreate">Create account</button></div>
     </div>
-    <div id="acIn" style="display:none;text-align:center;margin-top:10px"><button class="btn" id="acSync">Sync now</button><button class="btn" id="acOut">Log out</button></div>
+    <div id="acIn" style="display:none;margin-top:10px">
+      <div style="text-align:center"><button class="btn" id="acSync">Sync now</button><button class="btn" id="acOut">Log out</button></div>
+      <h3 style="margin:12px 0 4px;font-size:15px">Change username</h3>
+      <div class="row"><span>New username</span><input type="text" id="acNew" maxlength="16" style="width:170px"></div>
+      <div class="row"><span>Your password</span><input type="password" id="acNewPass" maxlength="100" autocomplete="current-password" style="width:170px"></div>
+      <div style="text-align:center;margin-top:6px"><button class="btn" id="acRename">Change username</button></div>
+    </div>
     <div style="text-align:center;margin-top:8px"><button class="btn" id="acBack">Back</button></div>
   </div>
 </div>
@@ -5588,7 +5594,6 @@ function acctShow() {
   $('acIn').style.display = acct ? 'block' : 'none';
   if (acct) $('acStatus').textContent = 'Signed in as ' + acct.u + '. Your cloud worlds are saved to this account.';
   else if (!$('acStatus').dataset.err) $('acStatus').textContent = 'Make an account to keep your cloud worlds on any device. Use a password you do not use anywhere else.';
-  $('mmAcct').textContent = acct ? acct.u : 'Account';
 }
 function acctMerge(remote) {
   let added = 0;
@@ -5639,6 +5644,23 @@ $('acCreate').onclick = () => acctSubmit('register');
 $('acBack').onclick = () => closeScreen();
 $('acSync').onclick = async () => { $('acStatus').textContent = 'Syncing...'; try { const n = await acctPull(); await acctPush(); $('acStatus').textContent = 'Synced.' + (n ? ' Added ' + n + ' world(s).' : ''); } catch (e) { $('acStatus').textContent = e.message || 'Could not sync.'; } };
 $('acOut').onclick = async () => { try { await acctCall('/api/account/logout?u=' + encodeURIComponent(acct.u), 'POST', {}, true); } catch (e) {} acct = null; try { localStorage.removeItem(ACCT_KEY); } catch (e) {} delete $('acStatus').dataset.err; acctShow(); $('acStatus').textContent = 'Logged out. Your worlds stay on this device.'; };
+$('acRename').onclick = async () => {
+  const nu = $('acNew').value.trim(), p = $('acNewPass').value, st = $('acStatus');
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(nu)) { st.textContent = 'Usernames are 3 to 16 letters, numbers or underscores.'; return; }
+  if (!p) { st.textContent = 'Type your password to confirm.'; return; }
+  st.textContent = 'Changing username...';
+  try {
+    const d = await acctCall('/api/account/rename?u=' + encodeURIComponent(acct.u), 'POST', { username: acct.u, newUsername: nu, password: p }, true);
+    acct = { u: d.username, t: d.token || acct.t };
+    try { localStorage.setItem(ACCT_KEY, JSON.stringify(acct)); } catch (e) {}
+    settings.name = acct.u.slice(0, 16); $('sName').value = settings.name; $('mmName').value = settings.name; saveSettings();
+    $('acNew').value = ''; $('acNewPass').value = '';
+    acctShow();
+    await acctPush();
+    st.textContent = 'Your username is now ' + acct.u + '.';
+  } catch (e) { st.textContent = e.message || 'Could not change the username.'; }
+};
+for (const id of ['acNew', 'acNewPass']) $(id).addEventListener('keydown', (e) => { e.stopPropagation(); });
 for (const id of ['acUser', 'acPass']) $(id).addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') (acct ? null : acctSubmit('login')); });
 acctShow();
 if (acct) acctPull().catch((e) => { if (e.status === 401) { acct = null; try { localStorage.removeItem(ACCT_KEY); } catch (x) {} acctShow(); } });
