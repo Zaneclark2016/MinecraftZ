@@ -60,7 +60,7 @@
   .btn:hover { background: #666; border-color: #ffd166; }
   .btn.primary { background: #3d8f3d; border-color: #8fd68f; }
   .btn:disabled { opacity: 0.4; cursor: default; }
-  #settings, #invScreen, #friends, #signEditor, #joinPanel, #shop {
+  #settings, #invScreen, #friends, #signEditor, #joinPanel, #acctPanel, #shop {
     display: none; position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,0.78);
     color: #fff; align-items: center; justify-content: center; overflow: auto;
   }
@@ -195,7 +195,7 @@
     <div class="row"><span>Go online (join others in the same seed)</span><input type="checkbox" id="mmOnline"></div>
     <h2 style="margin-top:12px">Worlds</h2>
     <div id="worldList"></div>
-    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="mmNew">Create World</button><button class="btn" id="mmJoin">Worlds</button><button class="btn" id="mmFriends">Friends</button><button class="btn" id="mmSettings">Settings</button></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn primary" id="mmNew">Create World</button><button class="btn" id="mmJoin">Worlds</button><button class="btn" id="mmAcct">Account</button><button class="btn" id="mmFriends">Friends</button><button class="btn" id="mmSettings">Settings</button></div>
   </div>
 </div>
 <div id="createPanel">
@@ -222,6 +222,19 @@
     <input type="text" id="sl0" maxlength="15"><input type="text" id="sl1" maxlength="15"><input type="text" id="sl2" maxlength="15"><input type="text" id="sl3" maxlength="15">
     <div class="hint">Up to 4 lines of 15 characters. Enter moves to the next line. Right-click a sign later to edit it.</div>
     <div style="text-align:center;margin-top:8px"><button class="btn primary" id="signOk">Done</button></div>
+  </div>
+</div>
+<div id="acctPanel">
+  <div class="panel" style="width:min(94vw,400px)">
+    <h2>Account</h2>
+    <div class="hint" id="acStatus">Make an account to keep your cloud worlds on any device. Use a password you do not use anywhere else.</div>
+    <div id="acForm">
+      <div class="row"><span>Username</span><input type="text" id="acUser" maxlength="16" autocomplete="username" style="width:190px"></div>
+      <div class="row"><span>Password</span><input type="password" id="acPass" maxlength="100" autocomplete="current-password" style="width:190px"></div>
+      <div style="text-align:center;margin-top:10px"><button class="btn primary" id="acLogin">Log in</button><button class="btn" id="acCreate">Create account</button></div>
+    </div>
+    <div id="acIn" style="display:none;text-align:center;margin-top:10px"><button class="btn" id="acSync">Sync now</button><button class="btn" id="acOut">Log out</button></div>
+    <div style="text-align:center;margin-top:8px"><button class="btn" id="acBack">Back</button></div>
   </div>
 </div>
 <div id="joinPanel">
@@ -2050,6 +2063,7 @@ function refreshUI() {
   $('signEditor').style.display = screen === 'sign' ? 'flex' : 'none';
   $('chatBar').style.display = screen === 'chat' ? 'flex' : 'none';
   $('joinPanel').style.display = (!inGame && screen === 'joincode') ? 'flex' : 'none';
+  $('acctPanel').style.display = (!inGame && screen === 'account') ? 'flex' : 'none';
   invScreen.style.display = screen === 'inv' ? 'flex' : 'none';
   if (screen !== 'inv') cursorImg.style.display = 'none';
   if (inGame && !locked && screen === null) updatePauseInfo();
@@ -2402,6 +2416,7 @@ function loadWorldList() {
 }
 function saveWorldList() {
   try { localStorage.setItem(WORLDS_KEY, JSON.stringify(worlds)); } catch (e) {}
+  if (typeof acctPushSoon === 'function') acctPushSoon();
 }
 
 // Numbers are used as typed; any other text is hashed, so the same words always give the same world.
@@ -3644,7 +3659,7 @@ window.addEventListener('wheel', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings' || screen === 'create' || screen === 'friends' || screen === 'joincode' || screen === 'shop' || screen === 'chat')) { closeScreen(); return; }
+  if (e.code === 'Escape' && (screen === 'inv' || screen === 'settings' || screen === 'create' || screen === 'friends' || screen === 'joincode' || screen === 'account' || screen === 'shop' || screen === 'chat')) { closeScreen(); return; }
   if (e.code === 'Escape' && screen === 'sign') { finishSign(true); return; }
   if (screen === 'inv' && (e.code === 'KeyC' || e.code === 'KeyI')) { closeScreen(); return; }
   if (screen === 'shop' && e.code === 'KeyB') { closeScreen(); return; }
@@ -5553,6 +5568,80 @@ function loop(now) {
 
   requestAnimationFrame(loop);
 }
+// ---------- Accounts (username + password, kept on the MinecraftZ cloud) ----------
+const ACCT_KEY = 'minecraftz_account_v1';
+let acct = null;
+try { acct = JSON.parse(localStorage.getItem(ACCT_KEY) || 'null'); if (!acct || !acct.u || !acct.t) acct = null; } catch (e) { acct = null; }
+async function acctCall(path, method, body, auth) {
+  const headers = { 'content-type': 'application/json' };
+  if (auth && acct) headers.authorization = 'Bearer ' + acct.t;
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const res = await fetch(CLOUD_API + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: ctl.signal });
+    let d = null; try { d = await res.json(); } catch (e) {}
+    if (!res.ok) { const err = new Error((d && d.error) || ('Error ' + res.status)); err.status = res.status; throw err; }
+    return d;
+  } finally { clearTimeout(to); }
+}
+function acctShow() {
+  $('acForm').style.display = acct ? 'none' : 'block';
+  $('acIn').style.display = acct ? 'block' : 'none';
+  if (acct) $('acStatus').textContent = 'Signed in as ' + acct.u + '. Your cloud worlds are saved to this account.';
+  else if (!$('acStatus').dataset.err) $('acStatus').textContent = 'Make an account to keep your cloud worlds on any device. Use a password you do not use anywhere else.';
+  $('mmAcct').textContent = acct ? acct.u : 'Account';
+}
+function acctMerge(remote) {
+  let added = 0;
+  for (const w of Array.isArray(remote) ? remote : []) {
+    if (!w || typeof w !== 'object' || !w.cid || !w.id) continue;
+    if (worlds.some(x => x.cid === w.cid)) continue;
+    worlds.push(w); added++;
+  }
+  if (added) { try { localStorage.setItem(WORLDS_KEY, JSON.stringify(worlds)); } catch (e) {} if (typeof renderWorldList === 'function' && !inGame) renderWorldList(); }
+  return added;
+}
+let acctTimer = null;
+function acctPushSoon() {
+  if (!acct) return;
+  clearTimeout(acctTimer);
+  acctTimer = setTimeout(acctPush, 2500);
+}
+async function acctPush() {
+  if (!acct) return;
+  try { await acctCall('/api/account/data?u=' + encodeURIComponent(acct.u), 'POST', { worlds: worlds.filter(w => w.cloud && w.cid && !w.brawl) }, true); } catch (e) { if (e.status === 401) { acct = null; try { localStorage.removeItem(ACCT_KEY); } catch (x) {} acctShow(); } }
+}
+async function acctPull() {
+  if (!acct) return 0;
+  const d = await acctCall('/api/account/data?u=' + encodeURIComponent(acct.u), 'GET', undefined, true);
+  return acctMerge(d.worlds);
+}
+async function acctSubmit(mode) {
+  const u = $('acUser').value.trim(), p = $('acPass').value;
+  const st = $('acStatus'); st.dataset.err = '1';
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(u)) { st.textContent = 'Usernames are 3 to 16 letters, numbers or underscores.'; return; }
+  if (p.length < 6) { st.textContent = 'Passwords need at least 6 characters.'; return; }
+  st.textContent = mode === 'register' ? 'Creating account...' : 'Logging in...';
+  try {
+    const d = await acctCall('/api/account/' + mode, 'POST', { username: u, password: p });
+    acct = { u: d.username, t: d.token };
+    try { localStorage.setItem(ACCT_KEY, JSON.stringify(acct)); } catch (e) {}
+    settings.name = d.username.slice(0, 16); $('sName').value = settings.name; $('mmName').value = settings.name; saveSettings();
+    const added = acctMerge(d.worlds);
+    $('acPass').value = ''; delete st.dataset.err;
+    await acctPush();
+    acctShow();
+    st.textContent = 'Signed in as ' + acct.u + (added ? '. Added ' + added + ' cloud world' + (added > 1 ? 's' : '') + ' from your account.' : '.');
+  } catch (e) { st.textContent = e.message || 'Could not reach the cloud.'; }
+}
+$('mmAcct').onclick = () => { delete $('acStatus').dataset.err; $('acUser').value = acct ? acct.u : ''; $('acPass').value = ''; acctShow(); openScreen('account'); };
+$('acLogin').onclick = () => acctSubmit('login');
+$('acCreate').onclick = () => acctSubmit('register');
+$('acBack').onclick = () => closeScreen();
+$('acSync').onclick = async () => { $('acStatus').textContent = 'Syncing...'; try { const n = await acctPull(); await acctPush(); $('acStatus').textContent = 'Synced.' + (n ? ' Added ' + n + ' world(s).' : ''); } catch (e) { $('acStatus').textContent = e.message || 'Could not sync.'; } };
+$('acOut').onclick = async () => { try { await acctCall('/api/account/logout?u=' + encodeURIComponent(acct.u), 'POST', {}, true); } catch (e) {} acct = null; try { localStorage.removeItem(ACCT_KEY); } catch (e) {} delete $('acStatus').dataset.err; acctShow(); $('acStatus').textContent = 'Logged out. Your worlds stay on this device.'; };
+for (const id of ['acUser', 'acPass']) $(id).addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') (acct ? null : acctSubmit('login')); });
+acctShow();
+if (acct) acctPull().catch((e) => { if (e.status === 401) { acct = null; try { localStorage.removeItem(ACCT_KEY); } catch (x) {} acctShow(); } });
 initMenu();
 // Wake the relay early (free hosting sleeps when idle and takes up to a minute to start)
 (function wakeRelay() {

@@ -10,6 +10,10 @@ class_name = "World"
 name = "REGISTRY"
 class_name = "Registry"
 
+[[durable_objects.bindings]]
+name = "ACCOUNTS"
+class_name = "Account"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["World"]
@@ -17,3 +21,7 @@ new_sqlite_classes = ["World"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Registry"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Account"]

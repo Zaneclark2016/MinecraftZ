@@ -72,6 +72,27 @@ export default {
         return cors(json({ id, ownerToken }));
       }
 
+      if (parts[0] === "api" && parts[1] === "account" && parts.length === 3) {
+        const action = parts[2];
+        let user = "";
+        let body = {};
+        if (request.method === "POST") body = await request.json().catch(() => ({}));
+        user = String(body.username || url.searchParams.get("u") || "");
+        if (!/^[A-Za-z0-9_]{3,16}$/.test(user)) return cors(json({ error: "Usernames are 3 to 16 letters, numbers or underscores." }, 400));
+        if (!["register", "login", "logout", "data"].includes(action)) return cors(json({ error: "Not found." }, 404));
+        if ((action === "register" || action === "login") && (typeof body.password !== "string" || body.password.length < 6 || body.password.length > 100)) {
+          return cors(json({ error: "Passwords need 6 to 100 characters." }, 400));
+        }
+        const stub = env.ACCOUNTS.get(env.ACCOUNTS.idFromName("u:" + user.toLowerCase()));
+        const headers = new Headers({ "content-type": "application/json" });
+        const auth = request.headers.get("authorization");
+        if (auth) headers.set("authorization", auth);
+        const res = await stub.fetch("https://account.internal/" + action + "?method=" + request.method, {
+          method: "POST", headers, body: JSON.stringify({ ...body, username: user })
+        });
+        return cors(res);
+      }
+
       if (url.pathname === "/api/public" && request.method === "GET") {
         return cors(await env.REGISTRY.get(env.REGISTRY.idFromName("registry")).fetch("https://registry.internal/list"));
       }
@@ -295,5 +316,95 @@ export class Registry {
       return json({ worlds: rows, now });
     }
     return json({ error: "Not found." }, 404);
+  }
+}
+
+async function pbkdf2Hex(password, saltHex) {
+  const salt = new Uint8Array(saltHex.match(/../g).map(h => parseInt(h, 16)));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, key, 256);
+  return Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function sameString(a, b) {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
+export class Account {
+  constructor(ctx) {
+    this.sql = ctx.storage.sql;
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS acct (id INTEGER PRIMARY KEY CHECK (id = 1), username TEXT NOT NULL, salt TEXT NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL, data TEXT NOT NULL DEFAULT '[]', fails INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, created INTEGER NOT NULL);
+    `);
+  }
+
+  async newSession() {
+    const token = randomToken();
+    this.sql.exec("INSERT INTO sessions (token_hash, created) VALUES (?, ?)", await hashToken(token), Date.now());
+    this.sql.exec("DELETE FROM sessions WHERE token_hash NOT IN (SELECT token_hash FROM sessions ORDER BY created DESC LIMIT 8)");
+    return token;
+  }
+
+  async authed(request) {
+    const auth = request.headers.get("authorization") || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (!token) return false;
+    const row = this.sql.exec("SELECT token_hash FROM sessions WHERE token_hash = ?", await hashToken(token)).toArray()[0];
+    return !!row;
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    const action = url.pathname.slice(1);
+    try {
+      const body = await request.json().catch(() => ({}));
+      const row = this.sql.exec("SELECT * FROM acct WHERE id = 1").toArray()[0];
+
+      if (action === "register") {
+        if (row) return json({ error: "That username is taken." }, 409);
+        const salt = randomToken(16);
+        const hash = await pbkdf2Hex(body.password, salt);
+        this.sql.exec("INSERT INTO acct (id, username, salt, hash, created) VALUES (1, ?, ?, ?, ?)", body.username, salt, hash, Date.now());
+        return json({ ok: true, username: body.username, token: await this.newSession(), worlds: [] });
+      }
+
+      if (action === "login") {
+        if (!row) return json({ error: "Wrong username or password." }, 403);
+        if (row.locked_until > Date.now()) return json({ error: "Too many wrong tries. Wait a few minutes and try again." }, 429);
+        const hash = await pbkdf2Hex(body.password, row.salt);
+        if (!sameString(hash, row.hash)) {
+          const fails = row.fails + 1;
+          this.sql.exec("UPDATE acct SET fails = ?, locked_until = ? WHERE id = 1", fails >= 5 ? 0 : fails, fails >= 5 ? Date.now() + 15 * 60000 : 0);
+          return json({ error: "Wrong username or password." }, 403);
+        }
+        this.sql.exec("UPDATE acct SET fails = 0, locked_until = 0 WHERE id = 1");
+        return json({ ok: true, username: row.username, token: await this.newSession(), worlds: JSON.parse(row.data || "[]") });
+      }
+
+      if (!row || !(await this.authed(request))) return json({ error: "Please log in again." }, 401);
+
+      if (action === "logout") {
+        const auth = request.headers.get("authorization") || "";
+        this.sql.exec("DELETE FROM sessions WHERE token_hash = ?", await hashToken(auth.slice(7)));
+        return json({ ok: true });
+      }
+
+      if (action === "data") {
+        if (url.searchParams.get("method") === "GET") return json({ ok: true, worlds: JSON.parse(row.data || "[]") });
+        if (!Array.isArray(body.worlds) || body.worlds.length > 100) return json({ error: "Too many worlds." }, 400);
+        const text = JSON.stringify(body.worlds);
+        if (text.length > 400000) return json({ error: "Too much data." }, 400);
+        this.sql.exec("UPDATE acct SET data = ? WHERE id = 1", text);
+        return json({ ok: true, saved: body.worlds.length });
+      }
+
+      return json({ error: "Not found." }, 404);
+    } catch (error) {
+      return json({ error: "Account request failed.", detail: String(error).slice(0, 160) }, 400);
+    }
   }
 }
