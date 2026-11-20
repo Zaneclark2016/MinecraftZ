@@ -5040,7 +5040,7 @@ function wxHash(n) {
 // 0 clear, 1 rain, 2 thunderstorm
 function wxPlan(now) {
   const r = wxHash(Math.floor(now / WX_PERIOD));
-  return r < 0.5 ? 0 : r < 0.78 ? 1 : 2;
+  return r < 0.7 ? 0 : r < 0.88 ? 1 : 2;
 }
 // gusts come in 12 second waves of random strength; the same for everyone
 function wxGust(now) {
