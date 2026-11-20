@@ -102,6 +102,11 @@ export default {
             method: "POST", headers, body: request.body
           }));
         }
+        if (parts[3] === "players" && request.method === "POST") {
+          return cors(await stub.fetch("https://world.internal/players", {
+            method: "POST", headers, body: request.body
+          }));
+        }
       }
 
       return cors(json({ error: "Not found." }, 404));
@@ -120,6 +125,11 @@ export class World {
       CREATE TABLE IF NOT EXISTS invites (token_hash TEXT PRIMARY KEY, role TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS edits (chunk TEXT NOT NULL, block_index INTEGER NOT NULL, value TEXT NOT NULL, PRIMARY KEY(chunk, block_index));
       CREATE TABLE IF NOT EXISTS signs (coords TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS players (
+        player_id TEXT PRIMARY KEY, name TEXT NOT NULL,
+        x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
+        yaw REAL NOT NULL, pitch REAL NOT NULL, seen_at INTEGER NOT NULL
+      );
     `);
   }
 
@@ -155,6 +165,32 @@ export class World {
         ? this.sql.exec("SELECT role FROM invites WHERE token_hash = ?", tokenHash).toArray()[0]
         : null;
       const role = isOwner ? "owner" : invite?.role || null;
+
+      if (url.pathname === "/players" && request.method === "POST") {
+        if (!role) return json({ error: "An invite is required to share player presence." }, 403);
+        const body = await request.json();
+        const id = String(body.id || "");
+        const name = String(body.name || "Player").replace(/[\\u0000-\\u001f]/g, "").slice(0, 16) || "Player";
+        const values = [body.x, body.y, body.z, body.yaw, body.pitch].map(Number);
+        if (!/^[A-Za-z0-9_-]{8,64}$/.test(id) ||
+            !values.every(Number.isFinite) ||
+            Math.abs(values[0]) > 5000000 || values[1] < 0 || values[1] > 512 ||
+            Math.abs(values[2]) > 5000000 || Math.abs(values[3]) > 1000 || Math.abs(values[4]) > 1000) {
+          return json({ error: "Invalid player position." }, 400);
+        }
+        const now = Date.now();
+        this.sql.exec("DELETE FROM players WHERE seen_at < ?", now - 12000);
+        this.sql.exec(
+          "INSERT INTO players (player_id, name, x, y, z, yaw, pitch, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
+          "ON CONFLICT(player_id) DO UPDATE SET name=excluded.name, x=excluded.x, y=excluded.y, z=excluded.z, yaw=excluded.yaw, pitch=excluded.pitch, seen_at=excluded.seen_at",
+          id, name, values[0], values[1], values[2], values[3], values[4], now
+        );
+        const players = this.sql.exec(
+          "SELECT player_id AS id, name, x, y, z, yaw, pitch FROM players WHERE seen_at >= ? ORDER BY seen_at DESC LIMIT 8",
+          now - 12000
+        ).toArray();
+        return json({ ok: true, players });
+      }
 
       if (url.pathname === "/world" && request.method === "GET") {
         if (meta.visibility !== "public" && !role) return json({ error: "This world is private. An invite is required." }, 403);
