@@ -1424,7 +1424,7 @@ function generateChunkData(cx, cz) {
   }
   // Rare, deterministic villages on level plains. Their chunk keys are tracked
   // separately so the village marker never collides with real block/fluid IDs.
-  if (!brawlWorld && hash2(cx * 17.31 + 401, cz * 23.17 - 87) > 0.985) {
+  if (!brawlWorld && hash2(cx * 17.31 + 401, cz * 23.17 - 87) > 0.92) {
     const topAt = (x, z) => {
       for (let y = CHUNK_HEIGHT - 2; y >= 1; y--) {
         if (data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] !== 0) return y;
