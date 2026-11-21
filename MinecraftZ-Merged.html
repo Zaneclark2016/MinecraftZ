@@ -4601,7 +4601,7 @@ function removeCart(cart) {
 // Creative: instant. Used by click / Q in Creative.
 function handleBreak(targetOverride = null) {
   if (deadTimer > 0) return;
-  const target = targetOverride || raycastTarget();
+  const target = arguments.length > 1 ? targetOverride : raycastTarget();
   if (!target) return;
   if (target.type === 'cart') { removeCart(target.cart); return; }
   if (target.type === 'mob') { attackMob(target.mob); return; }
