@@ -184,9 +184,11 @@ export class World {
       CREATE TABLE IF NOT EXISTS players (
         player_id TEXT PRIMARY KEY, name TEXT NOT NULL,
         x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
-        yaw REAL NOT NULL, pitch REAL NOT NULL, seen_at INTEGER NOT NULL
+        yaw REAL NOT NULL, pitch REAL NOT NULL, seen_at INTEGER NOT NULL,
+        dim INTEGER NOT NULL DEFAULT 0
       );
     `);
+    try { this.sql.exec("ALTER TABLE players ADD COLUMN dim INTEGER NOT NULL DEFAULT 0"); } catch (e) {}
   }
 
   async fetch(request) {
@@ -234,21 +236,23 @@ export class World {
         const id = String(body.id || "");
         const name = String(body.name || "Player").replace(/[\\u0000-\\u001f]/g, "").slice(0, 16) || "Player";
         const values = [body.x, body.y, body.z, body.yaw, body.pitch].map(Number);
+        const dim = body.dim === 1 ? 1 : 0;
         if (!/^[A-Za-z0-9_-]{8,64}$/.test(id) ||
             !values.every(Number.isFinite) ||
             Math.abs(values[0]) > 5000000 || values[1] < 0 || values[1] > 512 ||
-            Math.abs(values[2]) > 5000000 || Math.abs(values[3]) > 1000 || Math.abs(values[4]) > 1000) {
+            Math.abs(values[2]) > 5000000 || Math.abs(values[3]) > 1000 || Math.abs(values[4]) > 1000 ||
+            (body.dim !== undefined && body.dim !== 0 && body.dim !== 1)) {
           return json({ error: "Invalid player position." }, 400);
         }
         const now = Date.now();
         this.sql.exec("DELETE FROM players WHERE seen_at < ?", now - 12000);
         this.sql.exec(
-          "INSERT INTO players (player_id, name, x, y, z, yaw, pitch, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
-          "ON CONFLICT(player_id) DO UPDATE SET name=excluded.name, x=excluded.x, y=excluded.y, z=excluded.z, yaw=excluded.yaw, pitch=excluded.pitch, seen_at=excluded.seen_at",
-          id, name, values[0], values[1], values[2], values[3], values[4], now
+          "INSERT INTO players (player_id, name, x, y, z, yaw, pitch, seen_at, dim) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+          "ON CONFLICT(player_id) DO UPDATE SET name=excluded.name, x=excluded.x, y=excluded.y, z=excluded.z, yaw=excluded.yaw, pitch=excluded.pitch, seen_at=excluded.seen_at, dim=excluded.dim",
+          id, name, values[0], values[1], values[2], values[3], values[4], now, dim
         );
         const players = this.sql.exec(
-          "SELECT player_id AS id, name, x, y, z, yaw, pitch FROM players WHERE seen_at >= ? ORDER BY seen_at DESC LIMIT 8",
+          "SELECT player_id AS id, name, x, y, z, yaw, pitch, dim FROM players WHERE seen_at >= ? ORDER BY seen_at DESC LIMIT 8",
           now - 12000
         ).toArray();
         return json({ ok: true, players });
