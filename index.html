@@ -18,6 +18,7 @@
     position: fixed; top: 50%; left: 50%; width: 18px; height: 18px;
     transform: translate(-50%, -50%); pointer-events: none;
   }
+  body.touch #crosshair { display: none !important; }
   #crosshair::before, #crosshair::after {
     content: ''; position: absolute; background: rgba(255,255,255,0.85);
   }
@@ -4123,10 +4124,14 @@ function setMobileBuildMode(mode) {
   $('tPlaceMode').classList.toggle('active', mobileBuildMode === 'place');
   $('tDeleteMode').classList.toggle('active', mobileBuildMode === 'delete');
 }
-function touchBuildTap() {
-  if (mobileBuildMode === 'place') handleUseOrPlace();
-  else if (isSurvival()) { mouseHeld = true; setTimeout(() => { mouseHeld = false; }, 180); }
-  else handleBreak();
+function touchBuildTap(x, y) {
+  const ray = getTouchRay(x, y);
+  const target = raycastTarget(ray);
+  if (mobileBuildMode === 'place') handleUseOrPlace(false, target);
+  else if (isSurvival()) {
+    mobileMiningRay = ray; mouseHeld = true;
+    setTimeout(() => { mouseHeld = false; mobileMiningRay = null; }, 180);
+  } else handleBreak(target);
 }
 function bindBuildModeButton(id, mode) {
   const el = $(id);
@@ -4144,8 +4149,8 @@ canvas.addEventListener('touchstart', (e) => {
     s.timer = setTimeout(() => {
       if (s.moved) return;
       s.holding = true;
-      // A press-and-hold is the mobile equivalent of desktop right-click.
-      handleUseOrPlace();
+      // A press-and-hold is the mobile equivalent of desktop right-click at the touched position.
+      handleUseOrPlace(false, raycastTarget(getTouchRay(s.sx, s.sy)));
     }, 420);
     lookTouches.set(t.identifier, s);
   }
@@ -4177,7 +4182,7 @@ function lookEnd(e) {
     clearTimeout(s.timer); clearInterval(s.rep);
     if (s.holding) continue;
     if (s.moved || e.type === 'touchcancel' || !locked || screen !== null) continue;
-    touchBuildTap();
+    touchBuildTap(t.clientX, t.clientY);
   }
 }
 canvas.addEventListener('touchend', lookEnd, { passive: false });
@@ -4191,6 +4196,40 @@ function getLookDir() {
     y: Math.sin(player.pitch),
     z: -Math.cos(player.yaw) * cp
   };
+}
+
+// Build a world-space ray through the exact screen position touched on mobile.
+function getTouchRay(screenX, screenY) {
+  const eyeY = ridingCart ? (ridingCart.y + 1.15) : (player.y + 1.62);
+  let ox = player.x, oy = eyeY, oz = player.z;
+  let yaw = player.yaw, pitch = player.pitch;
+  if (settings.view !== 'first') {
+    const cyw = Math.cos(player.yaw), syw = Math.sin(player.yaw), cpt = Math.cos(player.pitch), spt = Math.sin(player.pitch);
+    const sgn = settings.view === 'third' ? 1 : -1;
+    const bx = sgn * syw * cpt, by = sgn * -spt, bz = sgn * cyw * cpt;
+    let side = settings.view === 'third' ? 1.0 : 0;
+    while (side > 0 && isSolidAt(Math.floor(player.x + cyw * side), Math.floor(eyeY), Math.floor(player.z - syw * side))) side -= 0.1;
+    side = Math.max(0, side);
+    const hx = player.x + cyw * side, hz = player.z - syw * side;
+    let dist = 4.2;
+    for (let d = 0.3; d <= 4.2; d += 0.1) {
+      if (isSolidAt(Math.floor(hx + bx * d), Math.floor(eyeY + by * d), Math.floor(hz + bz * d))) { dist = Math.max(0.3, d - 0.25); break; }
+    }
+    ox = hx + bx * dist; oy = eyeY + by * dist; oz = hz + bz * dist;
+    if (settings.view === 'front') { yaw += Math.PI; pitch = -pitch; }
+  }
+  const nx = (screenX / window.innerWidth) * 2 - 1;
+  const ny = 1 - (screenY / window.innerHeight) * 2;
+  const tan = Math.tan(settings.fov * Math.PI / 360), aspect = window.innerWidth / window.innerHeight;
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const rx = cy, ry = 0, rz = -sy;
+  const ux = sy * sp, uy = cp, uz = cy * sp;
+  const fx = sy * cp, fy = -sp, fz = cy * cp;
+  let dx = fx + rx * nx * tan * aspect + ux * ny * tan;
+  let dy = fy + ry * nx * tan * aspect + uy * ny * tan;
+  let dz = fz + rz * nx * tan * aspect + uz * ny * tan;
+  const len = Math.hypot(dx, dy, dz) || 1;
+  return { ox, oy, oz, dir: { x: dx / len, y: dy / len, z: dz / len } };
 }
 
 // Ray vs AABB (slab test). Returns entry distance or -1.
@@ -4211,11 +4250,11 @@ function rayAABB(ox, oy, oz, d, minX, minY, minZ, maxX, maxY, maxZ, maxDist) {
   return tmin;
 }
 
-function raycastTarget() {
-  const eyeX = player.x;
-  const eyeY = ridingCart ? (ridingCart.y + 1.15) : (player.y + 1.62);
-  const eyeZ = player.z;
-  const dir = getLookDir();
+function raycastTarget(rayOverride = null) {
+  const eyeX = rayOverride ? rayOverride.ox : player.x;
+  const eyeY = rayOverride ? rayOverride.oy : (ridingCart ? (ridingCart.y + 1.15) : (player.y + 1.62));
+  const eyeZ = rayOverride ? rayOverride.oz : player.z;
+  const dir = rayOverride ? rayOverride.dir : getLookDir();
 
   let hitCart = null, hitMob = null;
   let bestEntDist = 5.5;
@@ -4304,7 +4343,7 @@ function lightNetherPortalFromFrame(bx, by, bz) {
   return false;
 }
 
-function handleUseOrPlace(viaKey) {
+function handleUseOrPlace(viaKey, targetOverride = null) {
   if (deadTimer > 0) return;
   if (viaKey) {
     const trader=villagers.find(v=>v.role.startsWith('trader')&&Math.hypot(v.x-player.x,v.z-player.z)<3.2&&Math.abs(v.y-player.y)<3);
@@ -4332,7 +4371,7 @@ function handleUseOrPlace(viaKey) {
     return;
   }
 
-  const target = raycastTarget();
+  const target = targetOverride || raycastTarget();
 
   // Coupler: click the front cart, then the cart behind it (same cart twice = uncouple)
   if (heldId() === 86) {
@@ -4556,9 +4595,9 @@ function removeCart(cart) {
 }
 
 // Creative: instant. Used by click / Q in Creative.
-function handleBreak() {
+function handleBreak(targetOverride = null) {
   if (deadTimer > 0) return;
-  const target = raycastTarget();
+  const target = targetOverride || raycastTarget();
   if (!target) return;
   if (target.type === 'cart') { removeCart(target.cart); return; }
   if (target.type === 'mob') { attackMob(target.mob); return; }
@@ -4566,14 +4605,14 @@ function handleBreak() {
 }
 
 // Survival: hold to mine blocks, swing to attack
-let mineKey = null, mineProgress = 0, attackCd = 0;
+let mineKey = null, mineProgress = 0, attackCd = 0, mobileMiningRay = null;
 const mineBarEl = document.getElementById('mineBar');
 function resetMining() { mineKey = null; mineProgress = 0; mineBarEl.style.display = 'none'; }
 function updateMining(dt) {
   attackCd -= dt;
   const held = locked && screen === null && deadTimer <= 0 && isSurvival() && !ridingCart && (mouseHeld || keys['KeyQ']);
   if (!held) { resetMining(); return; }
-  const t = raycastTarget();
+  const t = raycastTarget(mobileMiningRay);
   if (!t) { resetMining(); return; }
   if (t.type === 'mob') {
     resetMining();
