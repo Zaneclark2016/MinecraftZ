@@ -4220,9 +4220,14 @@ function getTouchRay(screenX, screenY) {
     ox = hx + bx * dist; oy = eyeY + by * dist; oz = hz + bz * dist;
     if (settings.view === 'front') { yaw += Math.PI; pitch = -pitch; }
   }
-  const nx = (screenX / window.innerWidth) * 2 - 1;
-  const ny = 1 - (screenY / window.innerHeight) * 2;
-  const tan = Math.tan(settings.fov * Math.PI / 360), aspect = window.innerWidth / window.innerHeight;
+  // Convert the touch from browser client coordinates into the canvas viewport.
+  // Using window dimensions here can shift the ray toward the screen center when the
+  // canvas is inset or scaled by the mobile browser.
+  const rect = canvas.getBoundingClientRect();
+  const viewW = Math.max(1, rect.width), viewH = Math.max(1, rect.height);
+  const nx = ((screenX - rect.left) / viewW) * 2 - 1;
+  const ny = 1 - ((screenY - rect.top) / viewH) * 2;
+  const tan = Math.tan(settings.fov * Math.PI / 360), aspect = canvas.width / canvas.height;
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
   // Match the exact world-space camera basis used by viewMatrix/getLookDir.
   // The old forward vector pointed behind the player, so mobile taps raycasted away from blocks.
