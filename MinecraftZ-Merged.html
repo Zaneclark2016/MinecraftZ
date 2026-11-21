@@ -1422,9 +1422,17 @@ function generateChunkData(cx, cz) {
       }
     }
   }
-  // Rare, deterministic villages on level plains. Their chunk keys are tracked
-  // separately so the village marker never collides with real block/fluid IDs.
-  if (!brawlWorld && hash2(cx * 17.31 + 401, cz * 23.17 - 87) > 0.92) {
+  // Each 150x150-block region gets a deterministic 10% village roll.
+  // If selected, one chunk in that region is chosen as the village location.
+  // Village chunk keys are tracked separately so no block/fluid IDs are reserved.
+  const villageRegionX = Math.floor((cx * CHUNK_SIZE) / 150);
+  const villageRegionZ = Math.floor((cz * CHUNK_SIZE) / 150);
+  const villageRoll = hash2(villageRegionX * 71.7 + 401, villageRegionZ * 83.3 - 87);
+  const villageChunkX = Math.floor(villageRegionX * 150 / CHUNK_SIZE) +
+    Math.floor(hash2(villageRegionX * 17.31 + 901, villageRegionZ * 23.17 - 187) * 9);
+  const villageChunkZ = Math.floor(villageRegionZ * 150 / CHUNK_SIZE) +
+    Math.floor(hash2(villageRegionX * 29.41 + 503, villageRegionZ * 31.73 - 271) * 9);
+  if (!brawlWorld && villageRoll < 0.10 && cx === villageChunkX && cz === villageChunkZ) {
     const topAt = (x, z) => {
       for (let y = CHUNK_HEIGHT - 2; y >= 1; y--) {
         if (data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] !== 0) return y;
