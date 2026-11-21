@@ -4127,6 +4127,8 @@ function setMobileBuildMode(mode) {
 function touchBuildTap(x, y) {
   const ray = getTouchRay(x, y);
   const target = raycastTarget(ray);
+  // Tapping a minecart always boards it, regardless of PLACE/DELETE mode.
+  if (target && target.type === 'cart') { mountCart(target.cart); return; }
   if (mobileBuildMode === 'place') handleUseOrPlace(false, target);
   else if (isSurvival()) {
     mobileMiningRay = ray; mouseHeld = true;
