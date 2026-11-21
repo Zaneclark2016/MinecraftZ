@@ -1418,6 +1418,52 @@ function brawlChunk(cx, cz) {
   }
   return data;
 }
+function netherBastionColumn(wx, wz) {
+  const region = 96;
+  const rx = Math.floor(wx / region), rz = Math.floor(wz / region);
+  if ((rx !== 0 || rz !== 0) && hash2(rx * 19 + 401, rz * 19 - 607) < 0.76) return null;
+  const dx = wx - (rx * region + 48), dz = wz - (rz * region + 48);
+  const platform = Math.abs(dx) <= 12 && Math.abs(dz) <= 12;
+  const bridge = Math.abs(dx) <= 1 && dz >= -18 && dz <= -13;
+  if (!platform && !bridge) return null;
+  return { dx, dz, ground: terrainHeight(wx, wz), base: 16, platform, bridge };
+}
+function netherBastionBlockAt(b, y) {
+  const { dx, dz, ground, base } = b;
+  if (b.platform) {
+    if (y > ground && y < base) return 53;
+    if (y === base) return 49;
+    // Outer fortress wall and its raised battlements.
+    if ((Math.abs(dx) === 12 || Math.abs(dz) === 12) && y > base && y <= base + 4) {
+      if (dz === -12 && Math.abs(dx) <= 1 && y < base + 4) return 0;
+      return 49;
+    }
+    if ((Math.abs(dx) === 12 || Math.abs(dz) === 12) && y === base + 5 &&
+        ((dx + dz) % 3 === 0)) return 53;
+    // Four tall obsidian corner towers.
+    if (Math.abs(Math.abs(dx) - 10) <= 1 && Math.abs(Math.abs(dz) - 10) <= 1 &&
+        y > base && y <= base + 9) {
+      if (y === base + 9 && Math.abs(dx) === 10 && Math.abs(dz) === 10) return 49;
+      return 53;
+    }
+    // Inner keep, with a doorway facing the bridge.
+    if ((Math.abs(dx) === 5 || Math.abs(dz) === 5) && y > base && y <= base + 7) {
+      if (dz === -5 && Math.abs(dx) <= 1 && y <= base + 3) return 0;
+      return 49;
+    }
+    if (Math.abs(dx) <= 5 && Math.abs(dz) <= 5 && y === base + 8) return 49;
+    // Gold-studded treasure plinth in the keep.
+    if (y === base + 1 && ((dx === 0 && dz === 0) ||
+        (Math.abs(dx) === 2 && Math.abs(dz) === 2))) return 16;
+    // Raised gold details on the outer gate.
+    if (dz === -12 && Math.abs(dx) === 2 && y === base + 3) return 16;
+  }
+  if (b.bridge) {
+    const stepY = base - 1 - Math.floor((-dz - 13) / 2);
+    if (y > ground && y <= stepY) return 49;
+  }
+  return 0;
+}
 function generateChunkData(cx, cz) {
   if (brawlWorld) return brawlChunk(cx, cz);
   if (netherMode) {
@@ -1434,6 +1480,11 @@ function generateChunkData(cx, cz) {
       }
       if (h < 13 && hash2(wx - 200, wz + 900) > 0.975) {
         for (let y = 1; y < Math.min(8, h); y++) data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] = 100;
+      }
+      const bastion = netherBastionColumn(wx, wz);
+      if (bastion) for (let y = 1; y < CHUNK_HEIGHT; y++) {
+        const block = netherBastionBlockAt(bastion, y);
+        if (block) data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] = block;
       }
     }
     return data;
@@ -2131,6 +2182,7 @@ function changeDimension(toNether) {
     setDimensionEdits(netherEdits);
     rebuildTorches();
     clearChunks();
+    mobs.length = 0;
     for (let cx = -2; cx <= 2; cx++) for (let cz = -2; cz <= 2; cz++) getChunk(cx, cz, true);
     let portalBaseY = 1;
     for (let px = 6; px <= 9; px++) portalBaseY = Math.max(portalBaseY, terrainHeight(px, 8) + 1);
@@ -2147,6 +2199,7 @@ function changeDimension(toNether) {
     setDimensionEdits(overworldEdits);
     rebuildTorches();
     clearChunks();
+    mobs.length = 0;
     const r = portalReturn || { x: 8.5, y: terrainHeight(8, 8) + 3, z: 8.5, yaw: player.yaw, pitch: player.pitch };
     player.x = r.x; player.y = r.y; player.z = r.z; player.yaw = r.yaw; player.pitch = r.pitch;
     portalReturn = null;
@@ -5024,22 +5077,25 @@ function spawnAnimals(dt) {
 }
 function updateSpawning(dt) {
   if (brawlWorld) return;
-  spawnAnimals(dt);
+  if (!netherMode) spawnAnimals(dt);
   if (!isSurvival() || !settings.mobs || settings.difficulty === 'peaceful' || deadTimer > 0) return;
   spawnTimer -= dt;
   if (spawnTimer > 0) return;
   spawnTimer = settings.difficulty === 'hard' ? 1.5 : 3;
   const cap = settings.difficulty === 'hard' ? 14 : 8;
   let nh = 0; for (const m of mobs) if (!m.kind || m.kind === 'hostile') nh++;
-  if (nh >= cap || daylight() > 0.35) return;
-  const ang = Math.random() * Math.PI * 2, dist = 16 + Math.random() * 14;
+  if (nh >= cap || (!netherMode && daylight() > 0.35)) return;
+  const ang = Math.random() * Math.PI * 2, dist = netherMode ? 11 + Math.random() * 15 : 16 + Math.random() * 14;
   const sx = Math.floor(player.x + Math.cos(ang) * dist), sz = Math.floor(player.z + Math.sin(ang) * dist);
   if (!chunks.has(chunkKey(Math.floor(sx / CHUNK_SIZE), Math.floor(sz / CHUNK_SIZE)))) return;
   let sy = -1;
   for (let y = CHUNK_HEIGHT - 2; y >= 1; y--) if (isSolidAt(sx, y, sz)) { sy = y + 1; break; }
   if (sy < 0 || isSolidAt(sx, sy, sz) || isSolidAt(sx, sy + 1, sz) || isFluid(getBlock(sx, sy, sz))) return;
   const r = Math.random();
-  mobs.push(makeMobOfType(r < 0.4 ? 'zombie' : r < 0.6 ? 'skeleton' : r < 0.8 ? 'creeper' : 'spider', sx + 0.5, sy, sz + 0.5));
+  const type = netherMode
+    ? (r < 0.40 ? 'zombie' : r < 0.73 ? 'skeleton' : 'creeper')
+    : (r < 0.4 ? 'zombie' : r < 0.6 ? 'skeleton' : r < 0.8 ? 'creeper' : 'spider');
+  mobs.push(makeMobOfType(type, sx + 0.5, sy, sz + 0.5));
 }
 
 function updateMobs(dt) {
@@ -5056,7 +5112,7 @@ function updateMobs(dt) {
     m.kb -= dt;
 
     // Zombies burn in daylight when they can see the sky
-    if (!brawlWorld && m.burns !== false && (!m.kind || m.kind === 'hostile') && dayL > 0.75 && canSeeSky(m)) {
+    if (!netherMode && !brawlWorld && m.burns !== false && (!m.kind || m.kind === 'hostile') && dayL > 0.75 && canSeeSky(m)) {
       m.burn += dt;
       if (m.burn >= 1) {
         m.burn = 0; m.hp -= 2; m.flash = 0.25;
