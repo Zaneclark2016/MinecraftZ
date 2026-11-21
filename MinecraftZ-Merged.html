@@ -1325,14 +1325,15 @@ function carveColumn(data, x, z, wx, wz, h) {
 
 function chunkKey(cx, cz) { return `${cx},${cz}`; }
 
-// Biomes: everything beyond about 8 chunks (128 blocks) from the start is desert,
-// with an uneven edge and the occasional green patch.
-const DESERT_START = 128;
+// Biomes: mostly grassland everywhere, with scattered, broad desert patches.
+// Keep the starting area green; overlapping low/high-frequency noise makes
+// desert borders irregular instead of creating one endless desert region.
 function desertAmount(wx, wz) {
-  if (smoothNoise(wx * 0.025 + 500, wz * 0.025 + 500) > 0.82) return -1;
-  const d = Math.hypot(wx - 8, wz - 8);
-  const edge = DESERT_START + (smoothNoise(wx * 0.03, wz * 0.03) - 0.5) * 40;
-  return d - edge;
+  if (Math.hypot(wx - 8, wz - 8) < 96) return -1;
+  const broad = smoothNoise(wx * 0.008, wz * 0.008);
+  const detail = smoothNoise(wx * 0.021 + 137, wz * 0.021 - 293);
+  const desertness = broad * 0.78 + detail * 0.22;
+  return desertness > 0.72 ? desertness - 0.72 : -1;
 }
 function biomeAt(wx, wz) { return desertAmount(wx, wz) >= 0 ? 'Desert' : 'Plains'; }
 // Underground = something solid (not leaves) is above your head
