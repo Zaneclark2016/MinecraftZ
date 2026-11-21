@@ -1460,11 +1460,24 @@ function generateChunkData(cx, cz) {
   const firstVillageChunkZ = Math.ceil(villageRegionZ * 150 / CHUNK_SIZE);
   const villageChunksWide = Math.ceil((villageRegionX + 1) * 150 / CHUNK_SIZE) - firstVillageChunkX;
   const villageChunksDeep = Math.ceil((villageRegionZ + 1) * 150 / CHUNK_SIZE) - firstVillageChunkZ;
-  const villageChunkX = firstVillageChunkX +
-    Math.floor(hash2(villageRegionX * 17.31 + 901, villageRegionZ * 23.17 - 187) * villageChunksWide);
-  const villageChunkZ = firstVillageChunkZ +
-    Math.floor(hash2(villageRegionX * 29.41 + 503, villageRegionZ * 31.73 - 271) * villageChunksDeep);
-  if (!brawlWorld && villageRoll < 0.35 && cx === villageChunkX && cz === villageChunkZ) {
+  const villageStartIndex = Math.floor(hash2(villageRegionX * 17.31 + 901, villageRegionZ * 23.17 - 187) * villageChunksWide * villageChunksDeep);
+  let villageChunkX = firstVillageChunkX;
+  let villageChunkZ = firstVillageChunkZ;
+  let villageFoundPlains = false;
+  // Try every chunk in the region, starting at a seed-random position. This
+  // prevents one unlucky desert/unsuitable chunk from cancelling the whole region.
+  for (let n = 0; n < villageChunksWide * villageChunksDeep; n++) {
+    const index = (villageStartIndex + n) % (villageChunksWide * villageChunksDeep);
+    const testX = firstVillageChunkX + (index % villageChunksWide);
+    const testZ = firstVillageChunkZ + Math.floor(index / villageChunksWide);
+    if (desertAmount(testX * CHUNK_SIZE + 7, testZ * CHUNK_SIZE + 7) < 0) {
+      villageChunkX = testX;
+      villageChunkZ = testZ;
+      villageFoundPlains = true;
+      break;
+    }
+  }
+  if (!brawlWorld && villageRoll < 0.35 && villageFoundPlains && cx === villageChunkX && cz === villageChunkZ) {
     const topAt = (x, z) => {
       for (let y = CHUNK_HEIGHT - 2; y >= 1; y--) {
         if (data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] !== 0) return y;
@@ -1475,15 +1488,10 @@ function generateChunkData(cx, cz) {
       if (x < 0 || x >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE || y < 1 || y >= CHUNK_HEIGHT) return;
       data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] = id;
     };
-    const villageGround = topAt(7, 7);
-    let minGround = 99, maxGround = 0;
-    for (let x = 2; x <= 13; x++) for (let z = 2; z <= 13; z++) {
-      const h = topAt(x, z);
-      minGround = Math.min(minGround, h);
-      maxGround = Math.max(maxGround, h);
-    }
-    if (villageGround >= 5 && villageGround <= 23 && maxGround - minGround <= 3 &&
-        desertAmount(cx * CHUNK_SIZE + 7, cz * CHUNK_SIZE + 7) < 0) {
+    // Use the underlying terrain height rather than tree tops or uneven ground;
+    // the village footprint is flattened below.
+    const villageGround = terrainHeight(cx * CHUNK_SIZE + 7, cz * CHUNK_SIZE + 7);
+    if (villageGround >= 3 && villageGround <= CHUNK_HEIGHT - 8) {
       villageChunkKeys.add(chunkKey(cx, cz));
       for (let x = 1; x <= 14; x++) for (let z = 1; z <= 14; z++) {
         const oldTop = topAt(x, z);
