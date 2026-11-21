@@ -4224,9 +4224,11 @@ function getTouchRay(screenX, screenY) {
   const ny = 1 - (screenY / window.innerHeight) * 2;
   const tan = Math.tan(settings.fov * Math.PI / 360), aspect = window.innerWidth / window.innerHeight;
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  // Match the exact world-space camera basis used by viewMatrix/getLookDir.
+  // The old forward vector pointed behind the player, so mobile taps raycasted away from blocks.
   const rx = cy, ry = 0, rz = -sy;
   const ux = sy * sp, uy = cp, uz = cy * sp;
-  const fx = sy * cp, fy = -sp, fz = cy * cp;
+  const fx = -sy * cp, fy = sp, fz = -cy * cp;
   let dx = fx + rx * nx * tan * aspect + ux * ny * tan;
   let dy = fy + ry * nx * tan * aspect + uy * ny * tan;
   let dz = fz + rz * nx * tan * aspect + uz * ny * tan;
