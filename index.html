@@ -4375,7 +4375,7 @@ function handleUseOrPlace(viaKey, targetOverride = null) {
     return;
   }
 
-  const target = targetOverride || raycastTarget();
+  const target = arguments.length > 1 ? targetOverride : raycastTarget();
 
   // Coupler: click the front cart, then the cart behind it (same cart twice = uncouple)
   if (heldId() === 86) {
