@@ -996,9 +996,12 @@ const ITEM_DEFS = {
   110: { id: 110, name: 'Cooked Chicken',   icon: TILE.M_COOK_CHICK, food: 6 },
   111: { id: 111, name: 'Raw Mutton',       icon: TILE.M_RAW_MUT, food: 2 },
   112: { id: 112, name: 'Cooked Mutton',    icon: TILE.M_COOK_MUT, food: 6 },
-  115: { id: 115, name: 'Flint and Steel', icon: TILE.FLINT_ICON, tool: 'igniter' }
+  115: { id: 115, name: 'Flint and Steel', icon: TILE.FLINT_ICON, tool: 'igniter' },
+  116: { id: 116, name: "Explorer's Medal", icon: TILE.DIAMOND_ICON },
+  117: { id: 117, name: 'Ancient Gold Coin', icon: TILE.GOLD_ICON },
+  118: { id: 118, name: 'Royal Netherite Relic', icon: TILE.NETH_ICON }
 };
-const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 105, 106, 107, 108, 109, 110, 111, 112, 115];
+const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 105, 106, 107, 108, 109, 110, 111, 112, 115, 116, 117, 118];
 function itemInfo(id) { return ITEM_DEFS[id] || BLOCK_MAP[id]; }
 function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[id] && ITEM_DEFS[id].armor ? 1 : 64; }
 
@@ -4103,17 +4106,20 @@ function handleUseOrPlace(viaKey) {
     const trader=villagers.find(v=>v.role.startsWith('trader')&&Math.hypot(v.x-player.x,v.z-player.z)<3.2&&Math.abs(v.y-player.y)<3);
     if(trader){
       if(!isSurvival()){mpToast('Traveling trader: trades are available in Survival mode.');return;}
+      // Each village trader carries one exclusive, non-craftable collectible.
+      // The high-value payment makes visiting the market worthwhile.
       const offers=[
-        {inId:4,inCount:8,outId:5,outCount:16,label:'8 Wood → 16 Planks'},
-        {inId:48,inCount:10,outId:3,outCount:4,label:'10 Cobblestone → 4 Glass'},
-        {inId:13,inCount:12,outId:59,outCount:4,label:'12 Sand → 4 Sandstone'}
+        {inId:28,inCount:3,outId:116,label:"3 Diamonds → Explorer's Medal"},
+        {inId:27,inCount:8,outId:117,label:'8 Gold Ingots → Ancient Gold Coin'},
+        {inId:64,inCount:4,outId:118,label:'4 Netherite Ingots → Royal Netherite Relic'}
       ];
       const offer=offers[Number(trader.role.slice(-1))%offers.length];
-      if(countItem(offer.inId)<offer.inCount){mpToast('Trader offer: '+offer.label+'. You do not have enough materials.');return;}
+      if(countItem(offer.outId)>0){mpToast('You already own this exclusive collectible.');return;}
+      if(countItem(offer.inId)<offer.inCount){mpToast('Trader offer: '+offer.label+'. Bring the required rare materials.');return;}
       removeItem(offer.inId,offer.inCount);
-      const left=addItem(offer.outId,offer.outCount);
+      const left=addItem(offer.outId,1);
       if(left>0)spawnDrop(player.x,player.y+1,player.z,offer.outId,left);
-      renderHotbar();saveWorld();mpToast('Trade complete: '+offer.label);return;
+      renderHotbar();saveWorld();mpToast('Exclusive village trade: '+offer.label);return;
     }
   }
 
