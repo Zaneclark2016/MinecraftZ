@@ -1638,6 +1638,10 @@ function setBlock(wx, wy, wz, id) {
   let ed = edits.get(ekey);
   if (!ed) { ed = new Map(); edits.set(ekey, ed); }
   ed.set(cidx, id);
+  const dimensionMap = netherMode ? netherEdits : overworldEdits;
+  let dimensionChunk = dimensionMap.get(ekey);
+  if (!dimensionChunk) { dimensionChunk = new Map(); dimensionMap.set(ekey, dimensionChunk); }
+  dimensionChunk.set(cidx, id);
   worldDirty = true;
   fluidNotify(wx, wy, wz, oldId, id);
   markChunkDirty(cx, cz);
@@ -2120,11 +2124,6 @@ function buildPortalAt(x, y, z) {
 }
 function changeDimension(toNether) {
   if (portalCooldown > 0 || netherMode === toNether) return;
-  if (isCloud() || MP.role !== 'none' || guestSession) {
-    portalCooldown = 1.5;
-    mpToast('Nether portals are available in single-player worlds only.');
-    return;
-  }
   if (toNether) {
     overworldEdits = cloneEditMap(edits);
     portalReturn = { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch };
@@ -2987,13 +2986,13 @@ function parseCloudCode(s){try{s=String(s||'').trim();const i=s.indexOf('MCZ2.')
 function cloudLink(w){const c=cloudCode(w);return c?location.href.split('#')[0]+'#join='+c:'';}
 async function cloudReq(base,path,method='GET',body,token,keepalive){const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),15000),headers={'content-type':'application/json'};if(token)headers.authorization='Bearer '+token;try{const res=await fetch(base+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:ctl.signal,keepalive:!!keepalive});let data=null;try{data=await res.json();}catch(e){}if(!res.ok){const er=new Error(data&&data.error||'HTTP '+res.status);er.status=res.status;throw er;}return data;}finally{clearTimeout(to);}}
 const cloudMeta=w=>({name:w.name,visibility:'private',settings:{seed:w.seed,seedText:w.seedText,mode:w.mode,difficulty:w.difficulty||'normal',mobs:w.mobs!==false,caves:w.caves===true,dayLen:w.dayLen||6,epoch:w.epoch||Date.now()}});
-function cloudQueueBlock(wx,wy,wz,id){const cx=Math.floor(wx/CHUNK_SIZE),cz=Math.floor(wz/CHUNK_SIZE),lx=((wx%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE,lz=((wz%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE;cloudPending.set('edits/'+cx+'_'+cz+'/'+((wy*CHUNK_SIZE+lz)*CHUNK_SIZE+lx),id);cloudDirty=true;}
+function cloudQueueBlock(wx,wy,wz,id){const cx=Math.floor(wx/CHUNK_SIZE),cz=Math.floor(wz/CHUNK_SIZE),lx=((wx%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE,lz=((wz%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE,ck=(netherMode?'n:':'o:')+cx+'_'+cz;cloudPending.set('edits/'+ck+'/'+((wy*CHUNK_SIZE+lz)*CHUNK_SIZE+lx),id);cloudDirty=true;}
 function cloudQueueSign(key,sign){if(isCloud()&&currentWorld.cloudRole==='visitor'){mpToast('You have visitor permission in this world.');return;}const p=key.split(',');cloudPending.set('signs/'+p[0]+'_'+p[1]+'_'+p[2],sign?{t:sign.text,f:sign.face}:null);cloudDirty=true;}
 const pendKey=w=>'minecraftz_cpend_'+w.cid;
 function cloudPersistPend(w){cloudDirty=false;try{if(cloudPending.size)localStorage.setItem(pendKey(w),JSON.stringify([...cloudPending]));else localStorage.removeItem(pendKey(w));}catch(e){}}
 function cloudRestorePend(w){let a=null;try{a=JSON.parse(localStorage.getItem(pendKey(w))||'null');}catch(e){}if(!Array.isArray(a))return;for(const p of a)if(Array.isArray(p)&&typeof p[0]==='string'){cloudApply('/'+p[0],p[1]);cloudPending.set(p[0],p[1]);}cloudDirty=true;}
 async function cloudFlush(keepalive){if(!cloudPending.size||!isCloud()||currentWorld.cloudRole==='visitor'||(cloudBusy&&!keepalive))return;const w=currentWorld,edits=[],signsOut=[],sent=new Map();for(const[k,v]of cloudPending){const p=k.split('/');if(p[0]==='edits'&&p.length===3)edits.push({chunk:p[1],blockIndex:+p[2],value:String(v)});else if(p[0]==='signs'&&p.length===2)signsOut.push({coords:p[1],value:JSON.stringify(v)});sent.set(k,v);}cloudBusy=true;try{if(edits.length)await cloudReq(CLOUD_API,'/api/worlds/'+w.cid+'/edits','POST',{edits},w.cloudToken,keepalive);if(signsOut.length)await cloudReq(CLOUD_API,'/api/worlds/'+w.cid+'/signs','POST',{signs:signsOut},w.cloudToken,keepalive);for(const[k,v]of sent)if(cloudPending.get(k)===v)cloudPending.delete(k);if(currentWorld===w){cloudPersistPend(w);$('cloudDot').textContent='';}}catch(e){if(currentWorld===w)$('cloudDot').textContent='Cloud: '+e.message+' (retrying)';}finally{cloudBusy=false;}}
-function cloudSetCell(ck,idx,id){const m=/^(-?\d+)_(-?\d+)$/.exec(ck);idx=+idx;if(!m||!Number.isInteger(idx)||idx<0||idx>=CHUNK_SIZE*CHUNK_HEIGHT*CHUNK_SIZE)return;id=+id;if(!Number.isInteger(id)||id<0||(id!==0&&!BLOCK_MAP[id]))return;const cx=+m[1],cz=+m[2],lx=idx%CHUNK_SIZE,lz=Math.floor(idx/CHUNK_SIZE)%CHUNK_SIZE,y=Math.floor(idx/(CHUNK_SIZE*CHUNK_SIZE));if(y<1||y>=CHUNK_HEIGHT)return;const wx=cx*CHUNK_SIZE+lx,wz=cz*CHUNK_SIZE+lz,ch=chunks.get(chunkKey(cx,cz));if(ch){if(ch.data[idx]===id)return;cloudApplying=true;try{setBlock(wx,y,wz,id);}finally{cloudApplying=false;}}else{const ek=chunkKey(cx,cz);let ed=edits.get(ek);if(!ed){ed=new Map();edits.set(ek,ed);}ed.set(idx,id);const tk=wx+','+y+','+wz;if(id===11)torches.set(tk,[wx,y,wz]);else torches.delete(tk);}if(id===14&&!signs.has(wx+','+y+','+wz))signs.set(wx+','+y+','+wz,{text:'',face:0});}
+function cloudSetCell(ck,idx,id){const dim=String(ck).startsWith('n:')?1:0,raw=String(ck).replace(/^[on]:/,''),m=/^(-?\d+)_(-?\d+)$/.exec(raw);idx=+idx;if(!m||!Number.isInteger(idx)||idx<0||idx>=CHUNK_SIZE*CHUNK_HEIGHT*CHUNK_SIZE)return;id=+id;if(!Number.isInteger(id)||id<0||(id!==0&&!BLOCK_MAP[id]))return;const cx=+m[1],cz=+m[2],lx=idx%CHUNK_SIZE,lz=Math.floor(idx/CHUNK_SIZE)%CHUNK_SIZE,y=Math.floor(idx/(CHUNK_SIZE*CHUNK_SIZE));if(y<1||y>=CHUNK_HEIGHT)return;const wx=cx*CHUNK_SIZE+lx,wz=cz*CHUNK_SIZE+lz;if((dim===1)===netherMode){const ch=chunks.get(chunkKey(cx,cz));if(ch){if(ch.data[idx]===id)return;cloudApplying=true;try{setBlock(wx,y,wz,id);}finally{cloudApplying=false;}}else{const ek=chunkKey(cx,cz);let ed=edits.get(ek);if(!ed){ed=new Map();edits.set(ek,ed);}ed.set(idx,id);}}else{const target=dim?netherEdits:overworldEdits,ek=chunkKey(cx,cz);let ed=target.get(ek);if(!ed){ed=new Map();target.set(ek,ed);}ed.set(idx,id);}const tk=wx+','+y+','+wz;if(id===11)torches.set(tk,[wx,y,wz]);else torches.delete(tk);if(id===14&&!signs.has(wx+','+y+','+wz))signs.set(wx+','+y+','+wz,{text:'',face:0});}
 const cloudPlayers = new Map();   // players seen through the cloud (used when the live relay is not connected)
 function cloudPresence(pid, v) {
   if (pid === settings.pid || !v || typeof v !== 'object') return;
@@ -3001,12 +3000,12 @@ function cloudPresence(pid, v) {
   if (!e) { e = { id: 'c' + pid, name: 'Player', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, t: 0, seen: 0 }; cloudPlayers.set(pid, e); }
   if (e.t !== v.t) { e.t = v.t; e.seen = performance.now(); }
   e.name = String(v.n || 'Player').slice(0, 16);
-  e.x = num(v.x); e.y = num(v.y); e.z = num(v.z); e.yaw = num(v.yaw); e.pitch = num(v.pitch);
+  e.x = num(v.x); e.y = num(v.y); e.z = num(v.z); e.yaw = num(v.yaw); e.pitch = num(v.pitch); e.dim = v.d === 1 ? 1 : 0;
 }
 function cloudVisiblePlayers() {
   if (MP.players.size) return MP.players.values();
   const now = performance.now(), out = [];
-  for (const [id, e] of cloudPlayers) { if (now - e.seen > 9000) { cloudPlayers.delete(id); continue; } out.push(e); }
+  for (const [id, e] of cloudPlayers) { if (now - e.seen > 9000) { cloudPlayers.delete(id); continue; } if ((e.dim === 1) === netherMode) out.push(e); }
   return out;
 }
 let cloudPresT = 0, cloudPingT = 0;
@@ -3016,7 +3015,7 @@ function cloudSendPresence(dt) {
   if (cloudPingT <= 0 && currentWorld.vis === 'public') { cloudPingT = 60; cloudReq(CLOUD_API, '/api/worlds/' + currentWorld.cid + '/ping', 'POST', {}, currentWorld.ownerToken || currentWorld.cloudToken).catch(() => {}); }
   cloudPresT -= dt; if (cloudPresT > 0) return; cloudPresT = 2;
   const w = currentWorld;
-  cloudReq(CLOUD_API, '/api/worlds/' + w.cid + '/signs', 'POST', { signs: [{ coords: '~p_' + settings.pid, value: JSON.stringify({ n: myName(), x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch, t: Date.now() }) }] }, w.ownerToken || w.cloudToken).catch(() => {});
+  cloudReq(CLOUD_API, '/api/worlds/' + w.cid + '/signs', 'POST', { signs: [{ coords: '~p_' + settings.pid, value: JSON.stringify({ n: myName(), x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch, d: netherMode ? 1 : 0, t: Date.now() }) }] }, w.ownerToken || w.cloudToken).catch(() => {});
 }
 function cloudSetSign(k,v){if(String(k).startsWith('~p_')){cloudPresence(String(k).slice(3),v);return;}if(String(k).startsWith('~c_')){cloudChat(String(k).slice(3),v);return;}const m=/^(-?\d+)_(\d+)_(-?\d+)$/.exec(k);if(!m)return;const key=m[1]+','+m[2]+','+m[3];if(v===null||typeof v!=='object')signs.delete(key);else signs.set(key,{text:cleanSign(v.t),face:v.f===1?1:0});markChunkDirty(Math.floor(+m[1]/CHUNK_SIZE),Math.floor(+m[3]/CHUNK_SIZE));}
 function cloudApply(path,data){const p=String(path).split('/').filter(Boolean);if(!p.length){if(data&&typeof data==='object'){if(data.edits)cloudApply('/edits',data.edits);if(data.signs)cloudApply('/signs',data.signs);}}else if(p[0]==='edits'){if(p.length===1&&Array.isArray(data))for(const e of data)cloudSetCell(e.chunk,e.blockIndex,e.value);else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudApply('/edits/'+k,data[k]);else if(p.length===2&&data&&typeof data==='object')for(const i in data)cloudSetCell(p[1],i,data[i]);else if(p.length===3&&data!==null)cloudSetCell(p[1],p[2],data);}else if(p[0]==='signs'){if(p.length===1&&Array.isArray(data))for(const e of data){let v=null;try{v=JSON.parse(e.value);}catch(x){}cloudSetSign(e.coords,v);}else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudSetSign(k,data[k]);else if(p.length===2){let v=data;if(typeof v==='string'){try{v=JSON.parse(v);}catch(e){v=null;}}cloudSetSign(p[1],v);}}}
@@ -3237,23 +3236,26 @@ function mpHostMsg(conn, m) {
     if (MP.conns.size >= 7) { conn.send({ t: 'reject', why: 'This world is full (8 players)' }); setTimeout(() => conn.close(), 300); return; }
     const name = String(m.name || 'Player').slice(0, 16);
     MP.conns.set(conn.peer, conn);
-    MP.players.set(conn.peer, { id: conn.peer, name, x: player.x, y: player.y, z: player.z, yaw: 0, pitch: 0 });
+    MP.players.set(conn.peer, { id: conn.peer, name, x: player.x, y: player.y, z: player.z, yaw: 0, pitch: 0, dim: netherMode ? 1 : 0 });
     conn.send({ t: 'welcome', seed: worldSeed, seedText: currentWorld ? currentWorld.seedText : String(worldSeed),
                mode: settings.mode, difficulty: settings.difficulty, mobs: settings.mobs, caves: cavesOn, wt: worldTime, day: dayCount, dl: settings.dayLen,
-               host: { name: myName(), x: player.x, y: player.y, z: player.z } });
+               host: { name: myName(), x: player.x, y: player.y, z: player.z, dim: netherMode ? 1 : 0 }, netherMode: !!netherMode });
     if (!isCloud()) {
-    for (const [k, mm] of edits) {
-      const a = [];
-      for (const [i, id] of mm) a.push(i, id);
-      conn.send({ t: 'edits', k, a });
+      for (const [k, mm] of overworldEdits) {
+        const a = []; for (const [i, id] of mm) a.push(i, id);
+        conn.send({ t: 'edits', d: 0, k, a });
+      }
+      for (const [k, mm] of netherEdits) {
+        const a = []; for (const [i, id] of mm) a.push(i, id);
+        conn.send({ t: 'edits', d: 1, k, a });
+      }
     }
     conn.send({ t: 'signs', a: [...signs].map(([k, s]) => [k, s.text, s.face]) });
-    }
     conn.send({ t: 'ready' });
     mpToast(name + ' joined');
   } else if (m.t === 'pos') {
     const p = MP.players.get(conn.peer);
-    if (p) { p.x = num(m.x); p.y = num(m.y); p.z = num(m.z); p.yaw = num(m.yaw); p.pitch = num(m.pitch); }
+    if (p) { p.x = num(m.x); p.y = num(m.y); p.z = num(m.z); p.yaw = num(m.yaw); p.pitch = num(m.pitch); p.dim = m.d === 1 ? 1 : 0; }
   } else if (m.t === 'sign') {
     if (!MP.conns.has(conn.peer)) return;
     mpApplySign(m);
@@ -3269,15 +3271,15 @@ function mpHostMsg(conn, m) {
   } else if (m.t === 'block') {
     if (!MP.conns.has(conn.peer)) return;
     mpApplyBlock(m);
-    const out = { t: 'block', x: m.x | 0, y: m.y | 0, z: m.z | 0, id: m.id | 0 };
+    const out = { t: 'block', x: m.x | 0, y: m.y | 0, z: m.z | 0, id: m.id | 0, d: m.d === 1 ? 1 : 0 };
     for (const [id, c] of MP.conns) if (id !== conn.peer) { try { c.send(out); } catch (e) {} }
   }
 }
 
 function mpHostTick() {
   if (MP.role !== 'host' || !MP.conns.size) return;
-  const list = [{ id: MP.myId, name: myName(), x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch }];
-  for (const p of MP.players.values()) list.push({ id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch });
+  const list = [{ id: MP.myId, name: myName(), x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch, dim: netherMode ? 1 : 0 }];
+  for (const p of MP.players.values()) list.push({ id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, dim: p.dim === 1 ? 1 : 0 });
   const msg = { t: 'players', list, wt: worldTime, day: dayCount, dl: settings.dayLen };
   for (const c of MP.conns.values()) { try { c.send(msg); } catch (e) {} }
 }
@@ -3285,7 +3287,7 @@ function mpHostTick() {
 // ----- client side -----
 function mpClientTick() {
   if (MP.role !== 'client' || !MP.hostConn || !MP.hostConn.open) return;
-  MP.hostConn.send({ t: 'pos', x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch });
+  MP.hostConn.send({ t: 'pos', x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch, d: netherMode ? 1 : 0 });
 }
 
 function surfaceY(x, z) {
@@ -3317,7 +3319,7 @@ function mpClientMsg(m) {
       let p = MP.players.get(q.id);
       if (!p) { p = { id: q.id }; MP.players.set(q.id, p); if (MP.role === 'client') mpToast(String(q.name || 'Player').slice(0, 16) + ' is here'); }
       p.name = String(q.name || 'Player').slice(0, 16);
-      p.x = num(q.x); p.y = num(q.y); p.z = num(q.z); p.yaw = num(q.yaw); p.pitch = num(q.pitch);
+      p.x = num(q.x); p.y = num(q.y); p.z = num(q.z); p.yaw = num(q.yaw); p.pitch = num(q.pitch); p.dim = q.dim === 1 ? 1 : 0;
     }
     for (const [id, p] of [...MP.players]) if (!seen.has(id)) { MP.players.delete(id); mpToast(p.name + ' left'); }
     if (Number.isFinite(m.dl) && m.dl > 0 && !isCloud()) netDayLen = m.dl;
@@ -3350,11 +3352,15 @@ function mpFinishJoin() {
   settings.mobs = wl.mobs !== false;
   cavesOn = wl.caves === true;
   if (Number.isFinite(wl.seed)) worldSeed = wl.seed;
-  if (!isCloud()) edits.clear();
-  if (!isCloud()) for (const e of w.edits) {
-    const m = new Map();
-    for (let i = 0; i + 1 < e.a.length; i += 2) m.set(e.a[i], e.a[i + 1]);
-    edits.set(e.k, m);
+  if (!isCloud()) {
+    edits.clear(); overworldEdits.clear(); netherEdits.clear();
+    for (const e of w.edits) {
+      const m = new Map();
+      for (let i = 0; i + 1 < e.a.length; i += 2) m.set(e.a[i], e.a[i + 1]);
+      (e.d === 1 ? netherEdits : overworldEdits).set(e.k, m);
+    }
+    netherMode = !!wl.netherMode;
+    setDimensionEdits(netherMode ? netherEdits : overworldEdits);
   }
   if (!isCloud()) rebuildTorches();
   if (!isCloud()) signs.clear();
@@ -3378,17 +3384,26 @@ function mpFinishJoin() {
 
 // ----- block sync -----
 function mpApplyBlock(m) {
-  const x = m.x | 0, y = m.y | 0, z = m.z | 0, id = m.id | 0;
+  const x = m.x | 0, y = m.y | 0, z = m.z | 0, id = m.id | 0, dim = m.d === 1;
   if (y < 1 || y >= CHUNK_HEIGHT || Math.abs(x) > 5000000 || Math.abs(z) > 5000000) return;
   if (id !== 0 && (!BLOCK_MAP[id] || id === 9)) return;
-  mpApplying = true;
-  try { setBlock(x, y, z, id); } finally { mpApplying = false; }
+  if (dim === netherMode) {
+    mpApplying = true;
+    try { setBlock(x, y, z, id); } finally { mpApplying = false; }
+  } else {
+    const cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
+    const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE, lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const idx = (y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
+    const target = dim ? netherEdits : overworldEdits, key = chunkKey(cx, cz);
+    let ed = target.get(key); if (!ed) { ed = new Map(); target.set(key, ed); }
+    ed.set(idx, id); worldDirty = true;
+  }
   if (id === 14 && !signs.has(x + ',' + y + ',' + z)) signs.set(x + ',' + y + ',' + z, { text: '', face: 0 });
 }
 
 function mpSendBlock(x, y, z, id) {
   if (isCloud()) return;
-  const m = { t: 'block', x, y, z, id };
+  const m = { t: 'block', x, y, z, id, d: netherMode ? 1 : 0 };
   if (MP.role === 'host') {
     for (const c of MP.conns.values()) { try { c.send(m); } catch (e) {} }
   } else if (MP.role === 'client' && MP.hostConn && MP.hostConn.open) {
@@ -3417,7 +3432,7 @@ setupAttribs();
 const pVertCount = pVerts.length / 7;
 
 function mpDrawPlayers(dt) {
-  const vis = [...cloudVisiblePlayers()];
+  const vis = [...cloudVisiblePlayers()].filter(p => (p.dim === 1) === netherMode);
   if (!vis.length) return;
   gl.bindVertexArray(pVao);
   const k = Math.min(1, dt * 12);
@@ -3439,6 +3454,7 @@ function mpClearTags() { tagsEl.textContent = ''; tagEls.clear(); }
 function mpUpdateTags(proj, view) {
   const seen = new Set();
   for (const p of cloudVisiblePlayers()) {
+    if ((p.dim === 1) !== netherMode) continue;
     if (p.sx === undefined) continue;
     seen.add(p.id);
     let el = tagEls.get(p.id);
