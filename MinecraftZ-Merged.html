@@ -3047,7 +3047,7 @@ async function testCloud(){const m=$('sCloudMsg');m.textContent='Testing Cloudfl
 $('sCloud').value=CLOUD_API;$('sCloud').addEventListener('keydown',e=>e.stopPropagation());$('sCloudTest').onclick=testCloud;
 // ---------- Multiplayer (seed rooms over WebRTC, matchmaking by PeerJS) ----------
 // The first player in a seed claims the room id and hosts; everyone else with that seed connects to them.
-const MP_VER = 2;
+const MP_VER = 3;
 const MP = { peer: null, role: 'none', conns: new Map(), hostConn: null, myId: null, players: new Map(),
              status: 'Offline', timer: null, retry: null, gen: 0, pending: null };
 const mpRoomId = () => 'minecraftz' + MP_VER + '-' + (currentWorld && currentWorld.cloud && currentWorld.cid ? currentWorld.cid : currentWorld && currentWorld.rid ? currentWorld.rid : worldSeed);
