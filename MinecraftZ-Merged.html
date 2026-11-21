@@ -1285,8 +1285,33 @@ document.getElementById('seed').textContent = worldSeed;
 const chunks = new Map();
 const villageChunkKeys = new Set();
 const villageTraderChunkKeys = new Set();
-const edits = new Map();   // chunkKey -> Map(index -> blockId): every player edit, kept even when a chunk unloads
+const edits = new Map();   // active dimension edits
+let netherMode = false;
+let netherEdits = new Map();
+let overworldEdits = new Map();
+let portalReturn = null;
+let portalCooldown = 0;
 let worldDirty = false;
+
+function cloneEditMap(source) { return new Map([...source].map(([k, v]) => [k, new Map(v)])); }
+function setDimensionEdits(source) {
+  edits.clear();
+  for (const [k, v] of source) edits.set(k, new Map(v));
+}
+function serializeEditMap(source) {
+  const out = {};
+  for (const [k, m] of source) { const a = []; for (const [i, id] of m) a.push(i, id); out[k] = a; }
+  return out;
+}
+function restoreEditMap(raw) {
+  const out = new Map();
+  if (raw && typeof raw === 'object') for (const k of Object.keys(raw)) {
+    const a = raw[k], m = new Map();
+    if (Array.isArray(a)) for (let i = 0; i + 1 < a.length; i += 2) m.set(a[i], a[i + 1]);
+    out.set(k, m);
+  }
+  return out;
+}
 const signs = new Map();     // "x,y,z" -> { text, face } (face 0: board faces north/south, 1: faces east/west)
 const torches = new Map();   // "x,y,z" -> [x,y,z] for every placed torch, kept even when its chunk unloads
 const buildQueue = [];
@@ -1305,6 +1330,7 @@ function smoothNoise(x, z) {
 }
 const WATER_LEVEL = 16;
 function terrainHeight(wx, wz) {
+  if (netherMode) return 9 + Math.floor(smoothNoise(wx * 0.045 + 90, wz * 0.045 - 30) * 5);
   if (brawlWorld) return 20;
   const n1 = smoothNoise(wx * 0.04, wz * 0.04) * 14;
   const n2 = smoothNoise(wx * 0.12, wz * 0.12) * 4;
@@ -1366,7 +1392,7 @@ function desertAmount(wx, wz) {
   const desertness = broad * 0.78 + detail * 0.22;
   return desertness > 0.72 ? desertness - 0.72 : -1;
 }
-function biomeAt(wx, wz) { return desertAmount(wx, wz) >= 0 ? 'Desert' : 'Plains'; }
+function biomeAt(wx, wz) { return netherMode ? 'The Nether' : (desertAmount(wx, wz) >= 0 ? 'Desert' : 'Plains'); }
 // Underground = something solid (not leaves) is above your head
 function isUnderground(wx, wy, wz) {
   for (let y = Math.floor(wy) + 2; y < CHUNK_HEIGHT; y++) {
@@ -1375,7 +1401,7 @@ function isUnderground(wx, wy, wz) {
   }
   return false;
 }
-function areaName(wx, wy, wz) { if (brawlWorld) return 'Arena'; return isUnderground(wx, wy, wz) ? 'Mines' : biomeAt(wx, wz); }
+function areaName(wx, wy, wz) { if (brawlWorld) return 'Arena'; if (netherMode) return 'The Nether'; return isUnderground(wx, wy, wz) ? 'Mines' : biomeAt(wx, wz); }
 
 function brawlChunk(cx, cz) {
   const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
@@ -1394,6 +1420,24 @@ function brawlChunk(cx, cz) {
 }
 function generateChunkData(cx, cz) {
   if (brawlWorld) return brawlChunk(cx, cz);
+  if (netherMode) {
+    const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+    for (let x = 0; x < CHUNK_SIZE; x++) for (let z = 0; z < CHUNK_SIZE; z++) {
+      const wx = cx * CHUNK_SIZE + x, wz = cz * CHUNK_SIZE + z;
+      const h = terrainHeight(wx, wz);
+      const gravelPatch = hash2(wx * 0.22 + 73, wz * 0.22 - 19) > 0.79;
+      for (let y = 0; y <= h; y++) {
+        const idx = (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
+        if (y === 0) data[idx] = 6;
+        else if (y >= h - 2 && gravelPatch) data[idx] = 50;
+        else data[idx] = 114;
+      }
+      if (h < 13 && hash2(wx - 200, wz + 900) > 0.975) {
+        for (let y = 1; y < Math.min(8, h); y++) data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] = 100;
+      }
+    }
+    return data;
+  }
   const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
   for (let x = 0; x < CHUNK_SIZE; x++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -2068,6 +2112,54 @@ let worldTime = 0.08;   // fraction of a day, 0.25 = noon, 0.75 = midnight
 let dayCount = 1;
 let deadTimer = 0;
 
+function buildPortalAt(x, y, z) {
+  for (let yy = 0; yy < 5; yy++) for (let xx = 0; xx < 4; xx++) {
+    const edge = yy === 0 || yy === 4 || xx === 0 || xx === 3;
+    setBlock(x + xx, y + yy, z, edge ? 53 : 113);
+  }
+}
+function changeDimension(toNether) {
+  if (portalCooldown > 0 || netherMode === toNether) return;
+  if (isCloud() || MP.role !== 'none' || guestSession) {
+    portalCooldown = 1.5;
+    mpToast('Nether portals are available in single-player worlds only.');
+    return;
+  }
+  if (toNether) {
+    overworldEdits = cloneEditMap(edits);
+    portalReturn = { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch };
+    netherMode = true;
+    setDimensionEdits(netherEdits);
+    clearChunks();
+    for (let cx = -2; cx <= 2; cx++) for (let cz = -2; cz <= 2; cz++) getChunk(cx, cz, true);
+    let portalBaseY = 1;
+    for (let px = 6; px <= 9; px++) portalBaseY = Math.max(portalBaseY, terrainHeight(px, 8) + 1);
+    buildPortalAt(6, portalBaseY, 8);
+    player.x = 8.5; player.y = portalBaseY + 1.05; player.z = 8.5;
+    mpToast('Welcome to the Nether!');
+  } else {
+    netherEdits = cloneEditMap(edits);
+    netherMode = false;
+    setDimensionEdits(overworldEdits);
+    clearChunks();
+    const r = portalReturn || { x: 8.5, y: terrainHeight(8, 8) + 3, z: 8.5, yaw: player.yaw, pitch: player.pitch };
+    player.x = r.x; player.y = r.y; player.z = r.z; player.yaw = r.yaw; player.pitch = r.pitch;
+    portalReturn = null;
+    overworldEdits = cloneEditMap(edits);
+    mpToast('Returned to the Overworld!');
+  }
+  player.vx = player.vy = player.vz = 0;
+  portalCooldown = 2.5;
+  worldDirty = true;
+  saveWorld();
+}
+function checkPortalTravel(dt) {
+  portalCooldown = Math.max(0, portalCooldown - dt);
+  if (portalCooldown > 0) return;
+  const x = Math.floor(player.x), y = Math.floor(player.y + 0.7), z = Math.floor(player.z);
+  if (getBlock(x, y, z) === 113 || getBlock(x, y + 1, z) === 113) changeDimension(!netherMode);
+}
+
 function clearChunks() {
   for (const ch of chunks.values()) {
     if (ch.vao) gl.deleteVertexArray(ch.vao);
@@ -2604,6 +2696,10 @@ function saveWorld() {
     }
     const data = {
       v: 1, seed: worldSeed, edits: e,
+      netherMode: !!netherMode,
+      overworldEdits: serializeEditMap(netherMode ? overworldEdits : edits),
+      netherEdits: serializeEditMap(netherMode ? edits : netherEdits),
+      portalReturn: portalReturn ? { ...portalReturn } : null,
       player: deadTimer > 0 ? { x: 8.5, y: terrainHeight(8, 8) + 3, z: 8.5, yaw: player.yaw, pitch: player.pitch }
                             : { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch },
       hp: deadTimer > 0 ? maxHp : hp, maxHp, deaths, worldTime, dayCount,
@@ -2643,6 +2739,16 @@ function loadSaveInto(entry) {
       for (let i = 0; i + 1 < a.length; i += 2) m.set(a[i], a[i + 1]);
       edits.set(k, m);
     }
+    netherMode = !!d.netherMode;
+    portalReturn = d.portalReturn && Number.isFinite(d.portalReturn.x) ? { ...d.portalReturn } : null;
+    portalCooldown = 0;
+    if (netherMode) {
+      overworldEdits = restoreEditMap(d.overworldEdits);
+      netherEdits = cloneEditMap(edits);
+    } else {
+      overworldEdits = cloneEditMap(edits);
+      netherEdits = restoreEditMap(d.netherEdits);
+    }
     rebuildTorches();
     Object.assign(player, { x: d.player.x, y: d.player.y, z: d.player.z, yaw: d.player.yaw || 0, pitch: d.player.pitch || 0 });
     player.vx = player.vy = player.vz = 0;
@@ -2675,6 +2781,7 @@ function startWorld(entry, pre) {
   if (entry.cloud && !pre) { startCloudWorld(entry); return; }
   currentWorld = entry;
   guestSession = false;
+  netherMode = false; netherEdits.clear(); overworldEdits.clear(); portalReturn = null; portalCooldown = 0;
   settings.mode = entry.mode;
   settings.difficulty = entry.difficulty || 'normal';
   settings.mobs = entry.mobs !== false;
@@ -4483,10 +4590,12 @@ function checkBoxSolid(x, y, z, hw, h) {
 
 // ---------- Day / night ----------
 function daylight() {
+  if (netherMode) return 0.68;
   const s = Math.sin(worldTime * Math.PI * 2);
   return Math.max(0, Math.min(1, (s + 0.15) / 0.45));
 }
 function skyColor() {
+  if (netherMode) return [0.30, 0.075, 0.045];
   const s = Math.sin(worldTime * Math.PI * 2);
   const d = daylight();
   const day = [0.53, 0.81, 0.92], night = [0.015, 0.02, 0.06];
@@ -4517,7 +4626,7 @@ function tickClock() {
 function clockText() {
   const hrs = (6 + worldTime * 24) % 24;
   const h = Math.floor(hrs), m = Math.floor((hrs - h) * 60);
-  const label = brawlWorld ? 'Brawl' : isSurvival() ? 'Survival' : 'Creative';
+  const label = netherMode ? 'The Nether' : brawlWorld ? 'Brawl' : isSurvival() ? 'Survival' : 'Creative';
   return `${label} | Day ${dayCount} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` + (wx.storm > 0.5 ? ' | Thunderstorm' : wx.rain > 0.5 ? ' | Rain' : '') + (wx.lift > 0 ? ' | STRONG WIND' : '') + (saveFailed ? ' | SAVE FAILED (storage full)' : '');
 }
 
@@ -4756,7 +4865,7 @@ function makeVillager(x, y, z, homeX, homeZ, role = 'villager') {
     wyaw: Math.random() * Math.PI * 2, moving: false, onGround: false };
 }
 function updateVillagers(dt) {
-  if (brawlWorld) return;
+  if (netherMode || brawlWorld) return;
   for (const [key, ch] of chunks) {
     if (villagerChunks.has(key)) continue;
     villagerChunks.add(key);
@@ -5663,6 +5772,7 @@ function loop(now) {
     }
   }
 
+  checkPortalTravel(dt);
   tickClock();
   const simulate = locked || ((screen === 'inv' || screen === 'chat') && isShared());
   if (!simulate && screen === 'inv' && guiCart) { updateFurnaces(dt); updateCartInfo(); }   // solo worlds pause while the inventory is open
