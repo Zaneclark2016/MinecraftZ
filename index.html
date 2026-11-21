@@ -6093,8 +6093,8 @@ function loop(now) {
   gl.disable(gl.BLEND);
   gl.uniform1f(uAlphaLoc, 1.0);
 
-  // Draw Target Block Outline
-  if (!ridingCart) {
+  // Draw Target Block Outline (desktop only; mobile hides the center-target outline)
+  if (!ridingCart && !document.body.classList.contains('touch')) {
     const tgt = raycastTarget();
     if (tgt && tgt.type === 'block') {
       gl.bindVertexArray(hlVao);
