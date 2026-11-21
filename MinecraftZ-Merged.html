@@ -5507,6 +5507,8 @@ function updateMinecarts(dt) {
       let throttle = 0;
       if (keys['KeyW'] || keys['ArrowUp']) throttle += 1;
       if (keys['KeyS'] || keys['ArrowDown']) throttle -= 1;
+      // The mobile joystick's vertical axis drives the cart just like W/S.
+      throttle = Math.max(-1, Math.min(1, throttle + (touchMode ? touchMove.y : 0)));
 
       if (throttle !== 0) {
         const accel = onTrack ? 18.0 : 6.0;
