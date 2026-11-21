@@ -2129,17 +2129,23 @@ function changeDimension(toNether) {
     portalReturn = { x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch };
     netherMode = true;
     setDimensionEdits(netherEdits);
+    rebuildTorches();
     clearChunks();
     for (let cx = -2; cx <= 2; cx++) for (let cz = -2; cz <= 2; cz++) getChunk(cx, cz, true);
     let portalBaseY = 1;
     for (let px = 6; px <= 9; px++) portalBaseY = Math.max(portalBaseY, terrainHeight(px, 8) + 1);
-    buildPortalAt(6, portalBaseY, 8);
+    const visitorPortal = isCloud() && currentWorld.cloudRole === 'visitor';
+    const priorCloudApplying = cloudApplying;
+    if (visitorPortal) cloudApplying = true;
+    try { buildPortalAt(6, portalBaseY, 8); } finally { cloudApplying = priorCloudApplying; }
+    rebuildTorches();
     player.x = 8.5; player.y = portalBaseY + 1.05; player.z = 8.5;
     mpToast('Welcome to the Nether!');
   } else {
     netherEdits = cloneEditMap(edits);
     netherMode = false;
     setDimensionEdits(overworldEdits);
+    rebuildTorches();
     clearChunks();
     const r = portalReturn || { x: 8.5, y: terrainHeight(8, 8) + 3, z: 8.5, yaw: player.yaw, pitch: player.pitch };
     player.x = r.x; player.y = r.y; player.z = r.z; player.yaw = r.yaw; player.pitch = r.pitch;
@@ -3010,12 +3016,20 @@ function cloudVisiblePlayers() {
 }
 let cloudPresT = 0, cloudPingT = 0;
 function cloudSendPresence(dt) {
-  if (!isCloud() || currentWorld.cloudRole === 'visitor' || !locked) return;
+  if (!isCloud() || !locked) return;
   cloudPingT -= dt;
-  if (cloudPingT <= 0 && currentWorld.vis === 'public') { cloudPingT = 60; cloudReq(CLOUD_API, '/api/worlds/' + currentWorld.cid + '/ping', 'POST', {}, currentWorld.ownerToken || currentWorld.cloudToken).catch(() => {}); }
+  if (cloudPingT <= 0 && currentWorld.vis === 'public' && currentWorld.cloudRole !== 'visitor') { cloudPingT = 60; cloudReq(CLOUD_API, '/api/worlds/' + currentWorld.cid + '/ping', 'POST', {}, currentWorld.ownerToken || currentWorld.cloudToken).catch(() => {}); }
   cloudPresT -= dt; if (cloudPresT > 0) return; cloudPresT = 2;
   const w = currentWorld;
-  cloudReq(CLOUD_API, '/api/worlds/' + w.cid + '/signs', 'POST', { signs: [{ coords: '~p_' + settings.pid, value: JSON.stringify({ n: myName(), x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch, d: netherMode ? 1 : 0, t: Date.now() }) }] }, w.ownerToken || w.cloudToken).catch(() => {});
+  cloudReq(CLOUD_API, '/api/worlds/' + w.cid + '/players', 'POST', {
+    id: settings.pid, name: myName(), x: player.x, y: player.y, z: player.z,
+    yaw: player.yaw, pitch: player.pitch, dim: netherMode ? 1 : 0
+  }, w.ownerToken || w.cloudToken).then(d => {
+    const stamp = Date.now();
+    for (const p of (d.players || [])) if (p.id !== settings.pid) {
+      cloudPresence(p.id, { n: p.name, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, d: p.dim, t: stamp });
+    }
+  }).catch(() => {});
 }
 function cloudSetSign(k,v){if(String(k).startsWith('~p_')){cloudPresence(String(k).slice(3),v);return;}if(String(k).startsWith('~c_')){cloudChat(String(k).slice(3),v);return;}const m=/^(-?\d+)_(\d+)_(-?\d+)$/.exec(k);if(!m)return;const key=m[1]+','+m[2]+','+m[3];if(v===null||typeof v!=='object')signs.delete(key);else signs.set(key,{text:cleanSign(v.t),face:v.f===1?1:0});markChunkDirty(Math.floor(+m[1]/CHUNK_SIZE),Math.floor(+m[3]/CHUNK_SIZE));}
 function cloudApply(path,data){const p=String(path).split('/').filter(Boolean);if(!p.length){if(data&&typeof data==='object'){if(data.edits)cloudApply('/edits',data.edits);if(data.signs)cloudApply('/signs',data.signs);}}else if(p[0]==='edits'){if(p.length===1&&Array.isArray(data))for(const e of data)cloudSetCell(e.chunk,e.blockIndex,e.value);else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudApply('/edits/'+k,data[k]);else if(p.length===2&&data&&typeof data==='object')for(const i in data)cloudSetCell(p[1],i,data[i]);else if(p.length===3&&data!==null)cloudSetCell(p[1],p[2],data);}else if(p[0]==='signs'){if(p.length===1&&Array.isArray(data))for(const e of data){let v=null;try{v=JSON.parse(e.value);}catch(x){}cloudSetSign(e.coords,v);}else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudSetSign(k,data[k]);else if(p.length===2){let v=data;if(typeof v==='string'){try{v=JSON.parse(v);}catch(e){v=null;}}cloudSetSign(p[1],v);}}}
