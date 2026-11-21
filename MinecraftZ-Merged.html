@@ -1996,7 +1996,8 @@ const furnaceModels = [TILE.F_OFF, TILE.F_ON].map((t) => {
   return { vao, count: v.length / 7 };
 });
 
-// Highlight wireframe VAOconst hlVerts = [];
+// Highlight wireframe VAO
+const hlVerts = [];
 const e0 = -0.005, e1 = 1.005;
 const hlU = (TILE.BLACK % COLS + 0.5) / COLS;
 const hlV = (Math.floor(TILE.BLACK / COLS) + 0.5) / ROWS;
