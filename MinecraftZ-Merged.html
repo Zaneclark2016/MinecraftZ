@@ -1281,6 +1281,7 @@ document.getElementById('seed').textContent = worldSeed;
 
 const chunks = new Map();
 const villageChunkKeys = new Set();
+const villageTraderChunkKeys = new Set();
 const edits = new Map();   // chunkKey -> Map(index -> blockId): every player edit, kept even when a chunk unloads
 let worldDirty = false;
 const signs = new Map();     // "x,y,z" -> { text, face } (face 0: board faces north/south, 1: faces east/west)
@@ -1474,6 +1475,7 @@ function generateChunkData(cx, cz) {
     cz >= villageAnchorZ && cz < villageAnchorZ + 2;
   if (inVillage) {
     villageChunkKeys.add(chunkKey(cx, cz));
+    if(cx===villageAnchorX && cz===villageAnchorZ) villageTraderChunkKeys.add(chunkKey(cx,cz));
     const baseX = villageAnchorX * CHUNK_SIZE, baseZ = villageAnchorZ * CHUNK_SIZE;
     const ground = terrainHeight(baseX + 8, baseZ + 8);
     const topAt = (x,z) => {
@@ -2072,6 +2074,7 @@ function clearChunks() {
   }
   chunks.clear();
   villageChunkKeys.clear();
+  villageTraderChunkKeys.clear();
   villagerChunks.clear();
   villagers.length = 0;
   buildQueue.length = 0;
@@ -4752,19 +4755,21 @@ function updateVillagers(dt) {
     if (villagerChunks.has(key)) continue;
     villagerChunks.add(key);
     if (!ch.hasVillage) continue;
-    const spots = [[4,6],[11,5],[6,11]];
+    const spots = [[2,2],[13,2],[2,13]];
     for (const [lx,lz] of spots) {
       let groundY=1;
       for(let y=CHUNK_HEIGHT-2;y>=1;y--){const block=ch.data[(y*CHUNK_SIZE+lz)*CHUNK_SIZE+lx];if(block!==0){groundY=y+1;break;}}
       villagers.push(makeVillager(ch.cx*CHUNK_SIZE+lx+0.5,groundY,ch.cz*CHUNK_SIZE+lz+0.5,
         ch.cx*CHUNK_SIZE+8,ch.cz*CHUNK_SIZE+8,'villager'));
     }
-    // Each village chunk hosts a blue-robed trader with a small rotating stock.
-    const tx=8,tz=8;let traderY=1;
-    for(let y=CHUNK_HEIGHT-2;y>=1;y--){if(ch.data[(y*CHUNK_SIZE+tz)*CHUNK_SIZE+tx]!==0){traderY=y+1;break;}}
-    const tradeIndex=Math.abs((ch.cx*31+ch.cz*17))%3;
-    villagers.push(makeVillager(ch.cx*CHUNK_SIZE+tx+0.5,traderY,ch.cz*CHUNK_SIZE+tz+0.5,
-      ch.cx*CHUNK_SIZE+8,ch.cz*CHUNK_SIZE+8,'trader'+tradeIndex));
+    // One blue-robed traveling trader stands in the central market of each village.
+    if(villageTraderChunkKeys.has(key)){
+      const tx=10,tz=14;let traderY=1;
+      for(let y=CHUNK_HEIGHT-2;y>=1;y--){if(ch.data[(y*CHUNK_SIZE+tz)*CHUNK_SIZE+tx]!==0){traderY=y+1;break;}}
+      const tradeIndex=Math.abs((ch.cx*31+ch.cz*17))%3;
+      villagers.push(makeVillager(ch.cx*CHUNK_SIZE+tx+0.5,traderY,ch.cz*CHUNK_SIZE+tz+0.5,
+        ch.cx*CHUNK_SIZE+8,ch.cz*CHUNK_SIZE+8,'trader'+tradeIndex));
+    }
   }
   for (const v of villagers) {
     if (Math.hypot(player.x - v.x, player.z - v.z) > 90) continue;
