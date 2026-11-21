@@ -337,7 +337,7 @@ const gl = canvas.getContext('webgl2', { antialias: false });
 if (!gl) alert('WebGL2 is required to run MinecraftZ.');
 
 // Texture Atlas (16x16 pixel tiles, painted procedurally)
-const T = 16, COLS = 8, ROWS = 17;
+const T = 16, COLS = 8, ROWS = 18;
 const TILE = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, GLASS: 3, LOG_SIDE: 4, LOG_TOP: 5, PLANKS: 6, STONE: 7,
   LEAVES: 8, LADDER_WOOD: 9, TIE: 10, RAIL: 11, CART_OUT: 12, CART_IN: 13, WHEEL: 14, BLACK: 15,
@@ -361,7 +361,8 @@ const TILE = {
   M_RAW_PORK: 108, M_COOK_PORK: 109, M_RAW_BEEF: 110, M_COOK_BEEF: 111, M_RAW_CHICK: 112, M_COOK_CHICK: 113, M_RAW_MUT: 114, M_COOK_MUT: 115,
   PIG_SKIN: 116, COW_SKIN: 117, SHEEP_SKIN: 118, CHICK_SKIN: 119, WOLF_SKIN: 120, SPIDER_SKIN: 121, SKEL_SKIN: 122, CREEP_SKIN: 123,
   PIG_FACE: 124, COW_FACE: 125, SPIDER_FACE: 126, CREEP_FACE: 127, SKEL_FACE: 128, WOLF_FACE: 129, SHEEP_FACE: 130, CHICK_FACE: 131,
-  VILLAGER_ROBE: 132, VILLAGER_PANTS: 133
+  VILLAGER_ROBE: 132, VILLAGER_PANTS: 133,
+  PORTAL: 134, FLINT_ICON: 135, NETHERRACK: 136
 };
 // Fluids: 90 water source, 91-97 flowing water (distance from the source), 98 falling water;
 // 100 lava source, 101-103 flowing lava, 104 falling lava
@@ -839,6 +840,29 @@ atlasCanvas.height = ROWS * T;
     return [Math.max(0, 83 + n + seam), Math.max(0, 47 + n * 0.7 + seam * 0.5), Math.max(0, 25 + n * 0.4 + seam * 0.3)];
   });
 
+  // Nether blocks and flint-and-steel icon restored from the v21 source.
+  paint(TILE.PORTAL, (x, y) => {
+    const wave = Math.sin(x * 0.72 + Math.sin(y * 0.55) * 2.2) + Math.cos(y * 0.8 - x * 0.25);
+    const glow = Math.max(0, wave) * 18;
+    return [105 + glow, 24 + glow * 0.45, 190 + glow * 0.35, 238];
+  });
+  paint(TILE.NETHERRACK, (x, y) => {
+    const n = jit(18);
+    const fleck = ((x * 7 + y * 11) % 17 === 0) ? -28 : 0;
+    return [126 + n + fleck, 43 + n * 0.55 + fleck * 0.35, 35 + n * 0.45 + fleck * 0.25];
+  });
+  const flintRows = [
+    '................','...........ss...','..........sss...','.........sssf...',
+    '........ssfff...','.......ss.fff...','......ss...ff...','.....ss.........',
+    '....ss..........','...ss...........','..ss............','..ss............',
+    '...ss...........','....ss..........','................','................'
+  ];
+  const flintPal = { s: [92, 92, 98], f: [255, 170, 55] };
+  paint(TILE.FLINT_ICON, (x, y) => {
+    const c = flintRows[y][x];
+    return flintPal[c] || [0, 0, 0, 0];
+  });
+
   ctx.putImageData(img, 0, 0);
 })();
 
@@ -894,6 +918,7 @@ const ITEMS = [
   { id: 59, name: 'Sandstone',   top: TILE.SANDSTONE_TOP, side: TILE.SANDSTONE_SIDE, bot: TILE.SANDSTONE_TOP, icon: TILE.SANDSTONE_SIDE, solid: true, transparent: false },
   { id: 60, name: 'Ice',         top: TILE.ICE,    side: TILE.ICE,    bot: TILE.ICE,    icon: TILE.ICE,    solid: true, transparent: false },
   { id: 61, name: 'Copper Ore',  top: TILE.COPPER_ORE, side: TILE.COPPER_ORE, bot: TILE.COPPER_ORE, icon: TILE.COPPER_ORE, solid: true, transparent: false },
+  { id: 114, name: 'Netherrack', top: TILE.NETHERRACK, side: TILE.NETHERRACK, bot: TILE.NETHERRACK, icon: TILE.NETHERRACK, solid: true, transparent: false },
   { id: 90, name: 'Water',       top: TILE.WATER, side: TILE.WATER, bot: TILE.WATER, icon: TILE.WATER, solid: false, transparent: true, fluid: true },
   { id: 100, name: 'Lava',       top: TILE.LAVA, side: TILE.LAVA, bot: TILE.LAVA, icon: TILE.LAVA, solid: false, transparent: true, fluid: true }
 ];
@@ -902,6 +927,7 @@ const BLOCK_MAP = {};
 ITEMS.forEach(it => BLOCK_MAP[it.id] = it);
 for (const fid of [91, 92, 93, 94, 95, 96, 97, 98]) BLOCK_MAP[fid] = Object.assign({}, BLOCK_MAP[90], { id: fid, hidden: true });
 for (const fid of [101, 102, 103, 104]) BLOCK_MAP[fid] = Object.assign({}, BLOCK_MAP[100], { id: fid, hidden: true });
+BLOCK_MAP[113] = { id: 113, name: 'Nether Portal', top: TILE.PORTAL, side: TILE.PORTAL, bot: TILE.PORTAL, icon: TILE.PORTAL, solid: false, transparent: true, portal: true };
 // Ladders remember which wall they are on: 7 = wall to the north (-z) or whichever wall is found, 45 = south (+z), 46 = west (-x), 47 = east (+x)
 const LADDER_WALL = { 7: [0, -1], 45: [0, 1], 46: [-1, 0], 47: [1, 0] };
 for (const lid of [45, 46, 47]) BLOCK_MAP[lid] = Object.assign({}, BLOCK_MAP[7], { id: lid, hidden: true });
@@ -969,9 +995,10 @@ const ITEM_DEFS = {
   109: { id: 109, name: 'Raw Chicken',      icon: TILE.M_RAW_CHICK, food: 2 },
   110: { id: 110, name: 'Cooked Chicken',   icon: TILE.M_COOK_CHICK, food: 6 },
   111: { id: 111, name: 'Raw Mutton',       icon: TILE.M_RAW_MUT, food: 2 },
-  112: { id: 112, name: 'Cooked Mutton',    icon: TILE.M_COOK_MUT, food: 6 }
+  112: { id: 112, name: 'Cooked Mutton',    icon: TILE.M_COOK_MUT, food: 6 },
+  115: { id: 115, name: 'Flint and Steel', icon: TILE.FLINT_ICON, tool: 'igniter' }
 };
-const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 105, 106, 107, 108, 109, 110, 111, 112];
+const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 105, 106, 107, 108, 109, 110, 111, 112, 115];
 function itemInfo(id) { return ITEM_DEFS[id] || BLOCK_MAP[id]; }
 function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[id] && ITEM_DEFS[id].armor ? 1 : 64; }
 
@@ -4060,6 +4087,31 @@ function consumeHeld() {
   renderHotbar();
 }
 
+function lightNetherPortalFromFrame(bx, by, bz) {
+  // Activate a complete 4x5 obsidian frame (10 obsidian blocks minimum; corners optional).
+  const orientations = [{ axis: 'x', fixed: bz }, { axis: 'z', fixed: bx }];
+  for (const o of orientations) {
+    for (let y0 = by - 4; y0 <= by; y0++) {
+      for (let start = (o.axis === 'x' ? bx : bz) - 3; start <= (o.axis === 'x' ? bx : bz); start++) {
+        const at = (u, y) => o.axis === 'x' ? getBlock(start + u, y, o.fixed) : getBlock(o.fixed, y, start + u);
+        let valid = true;
+        for (let y = 0; y < 5 && valid; y++) for (let u = 0; u < 4; u++) {
+          const edge = y === 0 || y === 4 || u === 0 || u === 3;
+          const id = at(u, y0 + y);
+          if (edge ? id !== 53 : id !== 0) { valid = false; break; }
+        }
+        if (!valid) continue;
+        for (let y = 1; y <= 3; y++) for (let u = 1; u <= 2; u++) {
+          if (o.axis === 'x') setBlock(start + u, y0 + y, o.fixed, 113);
+          else setBlock(o.fixed, y0 + y, start + u, 113);
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function handleUseOrPlace(viaKey) {
   if (deadTimer > 0) return;
   if (ridingCart) {
@@ -4111,6 +4163,19 @@ function handleUseOrPlace(viaKey) {
   const slot = heldSlot();
   if (!slot.id) return;
   const item = itemInfo(slot.id);
+
+  // Flint and Steel activates a complete obsidian portal frame.
+  if (item && item.tool === 'igniter') {
+    if (target && target.type === 'block' && target.id === 53) {
+      if (lightNetherPortalFromFrame(target.bx, target.by, target.bz)) {
+        mpToast('Nether portal lit!');
+        if (isSurvival()) consumeHeld();
+      } else {
+        mpToast('Build a 4x5 obsidian frame with an empty 2x3 center');
+      }
+    }
+    return;
+  }
 
   // 3. Armor: equip it (swap with what is worn)
   if (item.armor) {
@@ -4215,9 +4280,9 @@ function handleUseOrPlace(viaKey) {
 }
 
 // What each block turns into when broken (0 = nothing)
-const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 45: 7, 46: 7, 47: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14, 48: 48, 49: 49, 50: 50, 51: 51, 52: 52, 53: 53, 54: 54, 55: 55, 56: 56, 57: 57, 58: 58, 59: 59, 60: 60 };
+const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 45: 7, 46: 7, 47: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14, 48: 48, 49: 49, 50: 50, 51: 51, 52: 52, 53: 53, 54: 54, 55: 55, 56: 56, 57: 57, 58: 58, 59: 59, 60: 60, 114: 114 };
 // Seconds to break by hand
-const HARDNESS = { 1: 0.6, 2: 0.5, 3: 0.4, 4: 2.0, 5: 1.5, 6: 4.0, 7: 0.4, 45: 0.4, 46: 0.4, 47: 0.4, 8: 0.3, 10: 0.25, 11: 0.1, 12: 0.5, 13: 0.5, 14: 0.5, 15: 6.0, 16: 7.0, 17: 9.0, 61: 5.0, 48: 3.0, 49: 3.0, 50: 0.7, 51: 0.7, 52: 0.3, 53: 15.0, 54: 1.2, 55: 0.5, 56: 0.5, 57: 0.5, 58: 0.5, 59: 1.5, 60: 0.5 };
+const HARDNESS = { 1: 0.6, 2: 0.5, 3: 0.4, 4: 2.0, 5: 1.5, 6: 4.0, 7: 0.4, 45: 0.4, 46: 0.4, 47: 0.4, 8: 0.3, 10: 0.25, 11: 0.1, 12: 0.5, 13: 0.5, 14: 0.5, 15: 6.0, 16: 7.0, 17: 9.0, 61: 5.0, 48: 3.0, 49: 3.0, 50: 0.7, 51: 0.7, 52: 0.3, 53: 15.0, 54: 1.2, 55: 0.5, 56: 0.5, 57: 0.5, 58: 0.5, 59: 1.5, 60: 0.5, 114: 0.5 };
 const STONEY = new Set([6, 48, 49, 59]);   // pickaxes break these quickly
 const ORE_DROP = { 15: 26, 16: 27, 17: 28, 61: 62 };
 const ORE_TIER = { 15: 1, 16: 2, 17: 2, 61: 1 };   // iron ore needs any pickaxe, gold and diamonds need iron or better
