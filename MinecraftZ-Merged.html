@@ -95,6 +95,10 @@
   #tTop { position: fixed; z-index: 6; top: 10px; right: 10px; display: flex; gap: 8px; }
   .tb { min-width: 46px; height: 38px; padding: 0 10px; border-radius: 8px; background: rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.4); color: #fff; font: bold 12px sans-serif; display: flex; align-items: center; justify-content: center; touch-action: none; }
   #tExit { position: fixed; z-index: 6; right: 140px; bottom: 60px; display: none; }
+  #tBuildMode { position: fixed; z-index: 7; top: 58px; right: 12px; display: none; gap: 6px; }
+  .tBuildBtn { min-width: 72px; height: 40px; padding: 0 12px; border-radius: 8px; background: rgba(0,0,0,0.62); border: 2px solid rgba(255,255,255,0.45); color: #fff; font: bold 13px sans-serif; touch-action: none; }
+  .tBuildBtn.active { border-color: #ffd166; background: rgba(255,209,102,0.32); color: #fff2c4; }
+  body.touch.ingame #tBuildMode { display: flex; }
   body.touch #ctrlLine { display: none; }
   body.touch #hud { font-size: 11px; padding: 6px 9px; }
   body.touch #hotbar { bottom: 8px; gap: 3px; padding: 3px; z-index: 5; }
@@ -326,6 +330,7 @@
   <div id="jumpBtn">JUMP</div>
   <div id="downBtn">DOWN</div>
   <div id="tTop"><div id="tFly" class="tb">FLY</div><div id="tView" class="tb">CAM</div><div id="tInv" class="tb">BAG</div><div id="tPause" class="tb">II</div></div>
+  <div id="tBuildMode"><button id="tPlaceMode" class="tBuildBtn" type="button">PLACE</button><button id="tDeleteMode" class="tBuildBtn active" type="button">DELETE</button></div>
   <div id="tExit" class="tb">EXIT</div>
 </div>
 <div id="hotbar"></div>
@@ -4109,11 +4114,25 @@ tapButton('tExit', () => { if (locked && ridingCart) dismountCart(); });
 
 // Looking and tapping on the rest of the screen
 const lookTouches = new Map();
-let lastTapAt = 0, pendingBreak = null;
-function touchBreakOnce() {
-  if (isSurvival()) { mouseHeld = true; setTimeout(() => { mouseHeld = false; }, 180); }
+let mobileBuildMode = 'delete';
+function setMobileBuildMode(mode) {
+  mobileBuildMode = mode === 'place' ? 'place' : 'delete';
+  $('tPlaceMode').classList.toggle('active', mobileBuildMode === 'place');
+  $('tDeleteMode').classList.toggle('active', mobileBuildMode === 'delete');
+}
+function touchBuildTap() {
+  if (mobileBuildMode === 'place') handleUseOrPlace();
+  else if (isSurvival()) { mouseHeld = true; setTimeout(() => { mouseHeld = false; }, 180); }
   else handleBreak();
 }
+function bindBuildModeButton(id, mode) {
+  const el = $(id);
+  el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); if (locked) setMobileBuildMode(mode); }, { passive: false });
+  el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); if (touchMode && locked) setMobileBuildMode(mode); });
+}
+setMobileBuildMode('delete');
+bindBuildModeButton('tPlaceMode', 'place');
+bindBuildModeButton('tDeleteMode', 'delete');
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   if (!touchMode || !locked || screen !== null || deadTimer > 0) return;
@@ -4122,10 +4141,9 @@ canvas.addEventListener('touchstart', (e) => {
     s.timer = setTimeout(() => {
       if (s.moved) return;
       s.holding = true;
-      if (pendingBreak) { clearTimeout(pendingBreak); pendingBreak = null; }
-      if (isSurvival()) mouseHeld = true;
-      else { handleBreak(); s.rep = setInterval(handleBreak, 300); }
-    }, 230);
+      // A press-and-hold is the mobile equivalent of desktop right-click.
+      handleUseOrPlace();
+    }, 420);
     lookTouches.set(t.identifier, s);
   }
 }, { passive: false });
@@ -4137,7 +4155,7 @@ canvas.addEventListener('touchmove', (e) => {
     if (!s) continue;
     if (!s.moved && Math.hypot(t.clientX - s.sx, t.clientY - s.sy) > 12) {
       s.moved = true; clearTimeout(s.timer);
-      if (s.holding) { s.holding = false; mouseHeld = false; clearInterval(s.rep); }
+      if (s.holding) s.holding = false;
     }
     if (s.moved) {
       const k = 0.0055 * settings.sens / 100;
@@ -4154,16 +4172,9 @@ function lookEnd(e) {
     if (!s) continue;
     lookTouches.delete(t.identifier);
     clearTimeout(s.timer); clearInterval(s.rep);
-    if (s.holding) { mouseHeld = false; continue; }
+    if (s.holding) continue;
     if (s.moved || e.type === 'touchcancel' || !locked || screen !== null) continue;
-    const now = performance.now();
-    if (pendingBreak && now - lastTapAt < 300) {          // second tap: place or use
-      clearTimeout(pendingBreak); pendingBreak = null; lastTapAt = 0;
-      handleUseOrPlace();
-    } else {                                              // first tap: break, unless a second tap follows
-      lastTapAt = now;
-      pendingBreak = setTimeout(() => { pendingBreak = null; lastTapAt = 0; touchBreakOnce(); }, 290);
-    }
+    touchBuildTap();
   }
 }
 canvas.addEventListener('touchend', lookEnd, { passive: false });
