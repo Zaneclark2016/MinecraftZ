@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v47</title>
+<title>MinecraftZ v48</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -369,7 +369,7 @@ const TILE = {
   PIG_SKIN: 116, COW_SKIN: 117, SHEEP_SKIN: 118, CHICK_SKIN: 119, WOLF_SKIN: 120, SPIDER_SKIN: 121, SKEL_SKIN: 122, CREEP_SKIN: 123,
   PIG_FACE: 124, COW_FACE: 125, SPIDER_FACE: 126, CREEP_FACE: 127, SKEL_FACE: 128, WOLF_FACE: 129, SHEEP_FACE: 130, CHICK_FACE: 131,
   VILLAGER_ROBE: 132, VILLAGER_PANTS: 133,
-  PORTAL: 134, FLINT_ICON: 135, NETHERRACK: 136
+  PORTAL: 134, FLINT_ICON: 135, NETHERRACK: 136, VILLAGER_SKIN: 137
 };
 // Fluids: 90 water source, 91-97 flowing water (distance from the source), 98 falling water;
 // 100 lava source, 101-103 flowing lava, 104 falling lava
@@ -853,6 +853,7 @@ atlasCanvas.height = ROWS * T;
     const glow = Math.max(0, wave) * 18;
     return [105 + glow, 24 + glow * 0.45, 190 + glow * 0.35, 238];
   });
+  paint(TILE.VILLAGER_SKIN, () => { const n = jit(6); return [196 + n, 150 + n, 118 + n]; });
   paint(TILE.NETHERRACK, (x, y) => {
     const n = jit(18);
     const fleck = ((x * 7 + y * 11) % 17 === 0) ? -28 : 0;
@@ -2807,7 +2808,7 @@ function loadSaveInto(entry) {
     }
     netherMode = !!d.netherMode;
     portalReturn = d.portalReturn && Number.isFinite(d.portalReturn.x) ? { ...d.portalReturn } : null;
-    portalCooldown = 0;
+    portalCooldown = 3;   // loading while standing in a portal must not instantly bounce you back
     if (netherMode) {
       overworldEdits = restoreEditMap(d.overworldEdits);
       netherEdits = cloneEditMap(edits);
@@ -4354,8 +4355,10 @@ function lightNetherPortalFromFrame(bx, by, bz) {
 
 function handleUseOrPlace(viaKey, targetOverride = null) {
   if (deadTimer > 0) return;
-  if (viaKey) {
-    const trader=villagers.find(v=>v.role.startsWith('trader')&&Math.hypot(v.x-player.x,v.z-player.z)<3.2&&Math.abs(v.y-player.y)<3);
+  if (viaKey || touchMode) {
+    const ld = getLookDir(), lh = Math.hypot(ld.x, ld.z) || 1;
+    const facing = (v) => { const dx = v.x - player.x, dz = v.z - player.z, dl = Math.hypot(dx, dz) || 1; return (dx * ld.x + dz * ld.z) / (dl * lh) > 0.5; };
+    const trader=villagers.find(v=>v.role.startsWith('trader')&&Math.hypot(v.x-player.x,v.z-player.z)<3.2&&Math.abs(v.y-player.y)<3&&facing(v));
     if(trader){
       if(!isSurvival()){mpToast('Traveling trader: trades are available in Survival mode.');return;}
       // Each village trader carries one exclusive, non-craftable collectible.
@@ -4983,7 +4986,7 @@ mobModels.creeper = (() => {
   return uploadModel(v);
 })();
 function makeVillagerModel(robe) {
-  const v=[], skin=TILE.CLAY, pants=TILE.VILLAGER_PANTS, dark=TILE.OBSIDIAN, boots=TILE.OBSIDIAN;
+  const v=[], skin=TILE.VILLAGER_SKIN, pants=TILE.VILLAGER_PANTS, dark=TILE.OBSIDIAN, boots=TILE.OBSIDIAN;
   pushBox(v,-0.29,0.55,-0.16,0.29,1.38,0.16,robe,robe,robe);
   pushBox(v,-0.25,0.18,-0.13,-0.02,0.59,0.13,pants,pants,pants);
   pushBox(v,0.02,0.18,-0.13,0.25,0.59,0.13,pants,pants,pants);
