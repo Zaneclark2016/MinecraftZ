@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.0.3</title>
+<title>MinecraftZ v5.1.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -138,6 +138,9 @@
   #brawlHud { display: none; position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 6; text-align: center; color: #fff; background: rgba(0,0,0,0.55); padding: 6px 14px; border-radius: 8px; font-size: 15px; line-height: 1.5; }
   #brawlHud b { color: #ffd166; }
   #brawlHud .btn { margin: 2px 0 0; padding: 3px 14px; font-size: 13px; pointer-events: auto; }
+  #hsBlind { display: none; position: fixed; inset: 0; background: #000; z-index: 6; pointer-events: none; color: #fff; font-size: 34px; font-weight: bold; text-align: center; align-items: center; justify-content: center; padding: 20px; }
+  #hsBar { display: none; position: fixed; top: 152px; left: 50%; transform: translateX(-50%); z-index: 7; background: rgba(0,0,0,0.65); color: #fff; font-size: 14px; font-weight: bold; padding: 6px 12px; border-radius: 8px; pointer-events: none; text-align: center; width: max-content; max-width: 40vw; }
+  #hsBtn { display: none; position: fixed; top: 222px; left: 50%; transform: translateX(-50%); z-index: 8; pointer-events: auto; margin: 0; }
   #brawlBanner { display: none; position: fixed; top: 22%; left: 0; right: 0; z-index: 7; text-align: center; color: #fff; font-size: 54px; font-weight: bold; text-shadow: 0 3px 10px #000; pointer-events: none; transition: opacity 0.6s; }
   .shoprow { display: flex; align-items: center; gap: 10px; padding: 6px 8px; margin: 4px 0; background: #383838; border-radius: 6px; }
   .shoprow img { width: 30px; height: 30px; image-rendering: pixelated; }
@@ -211,7 +214,7 @@
     <div class="hint">The same seed gives the same terrain, but every world is its own separate world, even with the same seed, so nobody can land in yours by accident. To play together, use the Friends list or share your world's join code.</div>
     <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="hideandseek">Hide &amp; Seek</option><option value="survival">Survival</option><option value="brawl">Brawl (arena waves)</option></select></div>
     <div class="hint" id="cBrawlHint" style="display:none">Brawl: fight waves of mobs in a closed 20x20 arena. Earn points for every kill and spend them in the shop between waves. The other world options are ignored.</div>
-    <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses the exact same rules and abilities as Creative, but player nametags are hidden for everyone in the world.</div>
+    <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides, then the seeker hunts for 5 minutes.</div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
     <div class="row"><span>Caves &amp; Ores</span><input type="checkbox" id="cCaves" checked></div>
     <div class="row"><span>Who can join</span><select id="cVis"><option value="private" selected>Private (join by code)</option><option value="public">Public (listed on the Join page)</option><option value="solo">Solo (only you)</option></select></div>
@@ -324,6 +327,7 @@
 </div>
 <div id="brawlHud"><div id="bhTop"></div><div id="bhSub"></div><button class="btn" id="bhShop">Shop (B)</button></div>
 <div id="brawlBanner"></div>
+<div id="hsBlind"></div><div id="hsBar"></div><button class="btn primary" id="hsBtn">Start round (H)</button>
 <div id="shop"><div class="panel" style="min-width:380px;max-width:520px"><h2>Brawl Shop</h2><div id="shopPts" style="color:#ffd166;margin-bottom:6px"></div><div id="shopList" style="max-height:52vh;overflow:auto"></div><div style="margin-top:10px;display:flex;gap:8px;justify-content:center"><button class="btn primary" id="shopStart">Start next wave now</button><button class="btn" id="shopClose">Back to the arena</button></div></div></div>
 <div id="crosshair"></div>
 <div id="prompt">Press [E] or [Right-Click] to Ride Minecart</div>
@@ -3328,6 +3332,7 @@ function mpHostMsg(conn, m) {
     }
     conn.send({ t: 'signs', a: [...signs].map(([k, s]) => [k, s.text, s.face]) });
     conn.send({ t: 'ready' });
+    try { conn.send(hsMsg()); } catch (e) {}
     mpToast(name + ' joined');
   } else if (m.t === 'pos') {
     const p = MP.players.get(conn.peer);
@@ -3351,6 +3356,78 @@ function mpHostMsg(conn, m) {
     for (const [id, c] of MP.conns) if (id !== conn.peer) { try { c.send(out); } catch (e) {} }
   }
 }
+
+// ----- Hide & Seek rounds (host runs the clock, clients follow) -----
+const HS = { phase: 'lobby', seeker: null, seekerName: '', endAt: 0, hideSecs: 30, seekSecs: 300, lastSync: 0, shown: 'lobby' };
+const hsActive = () => settings.mode === 'hideandseek' && inGame && (MP.role === 'host' || MP.role === 'client');
+const hsAmSeeker = () => !!HS.seeker && HS.seeker === MP.myId;
+const hsFrozen = () => settings.mode === 'hideandseek' && HS.phase === 'hide' && hsAmSeeker();
+const hsLeft = () => Math.max(0, Math.ceil((HS.endAt - performance.now()) / 1000));
+const hsClock = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
+function hsMsg(note) { return { t: 'hs', p: HS.phase, s: HS.seeker, n: HS.seekerName, left: Math.max(0, (HS.endAt - performance.now()) / 1000), note: note || '' }; }
+function hsBroadcast(note) { const m = hsMsg(note); for (const c of MP.conns.values()) { try { c.send(m); } catch (e) {} } }
+function hsSet(m) {
+  HS.phase = m.p === 'hide' || m.p === 'seek' ? m.p : 'lobby';
+  HS.seeker = HS.phase === 'lobby' ? null : (m.s || null);
+  HS.seekerName = String(m.n || '').slice(0, 16);
+  HS.endAt = performance.now() + (Number(m.left) || 0) * 1000;
+  hsNotice(m.note);
+  hsUi();
+}
+function hsNotice(note) {
+  if (HS.phase === HS.shown && !note) return;
+  const was = HS.shown; HS.shown = HS.phase;
+  if (HS.phase === 'hide') mpToast(hsAmSeeker() ? 'You are the SEEKER! Eyes shut while the others hide...' : HS.seekerName + ' is the seeker. HIDE!');
+  else if (HS.phase === 'seek') mpToast(hsAmSeeker() ? 'Ready or not, here you come!' : 'The seeker is looking for you!');
+  else if (was !== 'lobby' || note) mpToast(note || 'Round over');
+}
+function hsStart() {
+  if (MP.role !== 'host' || settings.mode !== 'hideandseek') return;
+  const all = [{ id: MP.myId, name: myName() }];
+  for (const q of MP.players.values()) all.push({ id: q.id, name: q.name });
+  if (all.length < 2) { mpToast('Need at least 2 players for a round.'); return; }
+  const pick = all[Math.floor(Math.random() * all.length)];
+  HS.phase = 'hide'; HS.seeker = pick.id; HS.seekerName = pick.name; HS.endAt = performance.now() + HS.hideSecs * 1000;
+  hsNotice(); hsBroadcast(); hsUi();
+}
+function hsEnd(why) {
+  HS.phase = 'lobby'; HS.seeker = null; HS.seekerName = ''; HS.endAt = 0;
+  hsNotice(why || 'Round over'); hsBroadcast(why || 'Round over'); hsUi();
+}
+function hsToggle() {
+  if (!hsActive() || MP.role !== 'host' || screen !== null) return;
+  if (HS.phase === 'lobby') hsStart(); else hsEnd('Round ended by the host');
+}
+function hsUi() {
+  const on = hsActive();
+  const bar = $('hsBar'), blind = $('hsBlind'), btn = $('hsBtn');
+  if (!on) { bar.style.display = blind.style.display = btn.style.display = 'none'; return; }
+  let t;
+  if (HS.phase === 'lobby') t = MP.role === 'host' ? 'Hide & Seek: press Start round when everyone is in' : 'Hide & Seek: waiting for the host to start a round';
+  else if (HS.phase === 'hide') t = hsAmSeeker() ? 'You are the seeker' : HS.seekerName + ' is counting. Hide! ' + hsLeft() + 's';
+  else t = (hsAmSeeker() ? 'You are the seeker. Find everyone!' : HS.seekerName + ' is seeking') + '  ' + hsClock(hsLeft());
+  if (bar.textContent !== t) bar.textContent = t;
+  bar.style.display = screen === null || screen === 'chat' ? 'block' : 'none';
+  if (hsFrozen()) { blind.style.display = 'flex'; const b = 'You are the seeker!\nCounting... ' + hsLeft(); if (blind.textContent !== b) blind.textContent = b; blind.style.whiteSpace = 'pre-line'; }
+  else blind.style.display = 'none';
+  btn.style.display = MP.role === 'host' && screen === null ? 'block' : 'none';
+  const bt = HS.phase === 'lobby' ? 'Start round (H)' : 'End round (H)';
+  if (btn.textContent !== bt) btn.textContent = bt;
+}
+function hsLoop() {
+  if (!hsActive()) { if (HS.phase !== 'lobby') { HS.phase = 'lobby'; HS.seeker = null; HS.shown = 'lobby'; } hsUi(); return; }
+  if (MP.role === 'host') {
+    const now = performance.now();
+    if (HS.phase !== 'lobby' && HS.seeker !== MP.myId && !MP.players.has(HS.seeker)) hsEnd('The seeker left, round over');
+    else if (HS.phase === 'hide' && now >= HS.endAt) { HS.phase = 'seek'; HS.endAt = now + HS.seekSecs * 1000; hsNotice(); hsBroadcast(); }
+    else if (HS.phase === 'seek' && now >= HS.endAt) hsEnd('Time is up! The hiders win!');
+    else if (HS.phase !== 'lobby' && now - HS.lastSync > 2000) { HS.lastSync = now; hsBroadcast(); }
+  } else if (HS.phase !== 'lobby' && performance.now() > HS.endAt + 15000) { HS.phase = 'lobby'; HS.seeker = null; HS.shown = 'lobby'; }
+  hsUi();
+}
+setInterval(hsLoop, 250);
+$('hsBtn').addEventListener('click', (e) => { e.stopPropagation(); hsToggle(); });
+$('hsBtn').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); hsToggle(); }, { passive: false });
 
 function mpHostTick() {
   if (MP.role !== 'host' || !MP.conns.size) return;
@@ -3387,6 +3464,8 @@ function mpClientMsg(m) {
     mpApplySign(m);
   } else if (m.t === 'chat') {
     chatPost(String(m.n || 'Player').slice(0, 16), String(m.m || '').slice(0, 120));
+  } else if (m.t === 'hs') {
+    hsSet(m);
   } else if (m.t === 'players') {
     const seen = new Set();
     for (const q of m.list || []) {
@@ -4021,6 +4100,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyN') toggleNoclip();
   if (e.code === 'KeyE') handleUseOrPlace(true);
   if (e.code === 'KeyT') { e.preventDefault(); openChat(); return; }
+  if (e.code === 'KeyH') { hsToggle(); return; }
   if (e.code === 'KeyQ' && !isSurvival()) handleBreak();
   if (e.code === 'KeyF') {
     if (ridingCart) dismountCart();
@@ -4369,7 +4449,7 @@ function lightNetherPortalFromFrame(bx, by, bz) {
 }
 
 function handleUseOrPlace(viaKey, targetOverride) {
-  if (deadTimer > 0) return;
+  if (deadTimer > 0 || hsFrozen()) return;
   if (viaKey || touchMode) {
     const ld = getLookDir(), lh = Math.hypot(ld.x, ld.z) || 1;
     const facing = (v) => { const dx = v.x - player.x, dz = v.z - player.z, dl = Math.hypot(dx, dz) || 1; return (dx * ld.x + dz * ld.z) / (dl * lh) > 0.5; };
@@ -4623,7 +4703,7 @@ function removeCart(cart) {
 
 // Creative: instant. Used by click / Q in Creative.
 function handleBreak(targetOverride) {
-  if (deadTimer > 0) return;
+  if (deadTimer > 0 || hsFrozen()) return;
   const target = targetOverride !== undefined ? targetOverride : raycastTarget();
   if (!target) return;
   if (target.type === 'cart') { removeCart(target.cart); return; }
@@ -5878,7 +5958,7 @@ function loop(now) {
 
   // Player movement
   pFl.w = pFl.l = false; pFl.head = null;
-  if (locked && !ridingCart && deadTimer <= 0) {
+  if (locked && !ridingCart && deadTimer <= 0 && !hsFrozen()) {
     const fwdX = -Math.sin(player.yaw);
     const fwdZ = -Math.cos(player.yaw);
     const rightX = Math.cos(player.yaw);
