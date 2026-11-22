@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v48</title>
+<title>MinecraftZ v49</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -4050,7 +4050,7 @@ function updateTouchMode() {
   document.body.classList.toggle('touch', touchMode);
 }
 function lockGame() { if (cloudLoading) return; if (touchMode) { locked = true; refreshUI(); } else canvas.requestPointerLock(); }
-function unlockGame() { if (touchMode) { locked = false; for (const k in keys) keys[k] = false; mouseHeld = false; touchMove.x = touchMove.y = 0; refreshUI(); } else document.exitPointerLock(); }
+function unlockGame() { if (touchMode) { locked = false; for (const k in keys) keys[k] = false; mouseHeld = false; mobileMiningPoint = null; touchMove.x = touchMove.y = 0; refreshUI(); } else document.exitPointerLock(); }
 function cycleView() {
   settings.view = settings.view === 'first' ? 'third' : settings.view === 'third' ? 'front' : 'first';
   $('sView').value = settings.view; saveSettings();
@@ -4152,9 +4152,17 @@ canvas.addEventListener('touchstart', (e) => {
     s.timer = setTimeout(() => {
       if (s.moved) return;
       s.holding = true;
-      // A press-and-hold is the mobile equivalent of desktop right-click at the touched position.
-      handleUseOrPlace(false, raycastTarget(getTouchRay(s.sx, s.sy)));
-    }, 420);
+      if (mobileBuildMode === 'place') {
+        // PLACE mode: press-and-hold = right-click (use / interact) at the touched position.
+        handleUseOrPlace(false, raycastTarget(getTouchRay(s.sx, s.sy)));
+      } else if (isSurvival()) {
+        // DELETE mode, survival: keep mining the touched spot for as long as the finger is held.
+        mobileMiningPoint = { x: s.sx, y: s.sy }; mouseHeld = true;
+      } else {
+        // DELETE mode, creative: keep breaking while held.
+        s.rep = setInterval(() => handleBreak(raycastTarget(getTouchRay(s.sx, s.sy))), 250);
+      }
+    }, mobileBuildMode === 'place' ? 420 : 160);
     lookTouches.set(t.identifier, s);
   }
 }, { passive: false });
@@ -4166,7 +4174,7 @@ canvas.addEventListener('touchmove', (e) => {
     if (!s) continue;
     if (!s.moved && Math.hypot(t.clientX - s.sx, t.clientY - s.sy) > 12) {
       s.moved = true; clearTimeout(s.timer);
-      if (s.holding) s.holding = false;
+      if (s.holding) { s.holding = false; mouseHeld = false; mobileMiningPoint = null; clearInterval(s.rep); }
     }
     if (s.moved) {
       const k = 0.0055 * settings.sens / 100;
@@ -4183,7 +4191,7 @@ function lookEnd(e) {
     if (!s) continue;
     lookTouches.delete(t.identifier);
     clearTimeout(s.timer); clearInterval(s.rep);
-    if (s.holding) continue;
+    if (s.holding) { mouseHeld = false; mobileMiningPoint = null; continue; }
     if (s.moved || e.type === 'touchcancel' || !locked || screen !== null) continue;
     touchBuildTap(t.clientX, t.clientY);
   }
@@ -4617,13 +4625,14 @@ function handleBreak(targetOverride = null) {
 }
 
 // Survival: hold to mine blocks, swing to attack
-let mineKey = null, mineProgress = 0, attackCd = 0, mobileMiningRay = null;
+let mineKey = null, mineProgress = 0, attackCd = 0, mobileMiningRay = null, mobileMiningPoint = null;
 const mineBarEl = document.getElementById('mineBar');
 function resetMining() { mineKey = null; mineProgress = 0; mineBarEl.style.display = 'none'; }
 function updateMining(dt) {
   attackCd -= dt;
   const held = locked && screen === null && deadTimer <= 0 && isSurvival() && !ridingCart && (mouseHeld || keys['KeyQ']);
   if (!held) { resetMining(); return; }
+  if (mobileMiningPoint) mobileMiningRay = getTouchRay(mobileMiningPoint.x, mobileMiningPoint.y);
   const t = raycastTarget(mobileMiningRay);
   if (!t) { resetMining(); return; }
   if (t.type === 'mob') {
