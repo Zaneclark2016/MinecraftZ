@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.2.0</title>
+<title>MinecraftZ v5.3.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -214,7 +214,8 @@
     <div class="hint">The same seed gives the same terrain, but every world is its own separate world, even with the same seed, so nobody can land in yours by accident. To play together, use the Friends list or share your world's join code.</div>
     <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="hideandseek">Hide &amp; Seek</option><option value="survival">Survival</option><option value="brawl">Brawl (arena waves)</option></select></div>
     <div class="hint" id="cBrawlHint" style="display:none">Brawl: fight waves of mobs in a closed 20x20 arena. Earn points for every kill and spend them in the shop between waves. The other world options are ignored.</div>
-    <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides. Then the seeker has 5 minutes to tag hiders by clicking or tapping near them, and every tagged hider becomes another seeker.</div>
+    <div class="row" id="cHsRow" style="display:none"><span>Map</span><select id="cHsMap"><option value="1">Whispering Woods (150x150)</option><option value="2">Sandstone Town (150x150)</option><option value="3">Stone Maze (150x150)</option><option value="0">Open world (no limits)</option></select></div>
+    <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. Pick a map: each is a closed 150x150 arena with a boundary wall and a height limit. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides. Then the seeker has 5 minutes to tag hiders by clicking or tapping near them, and every tagged hider becomes another seeker.</div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
     <div class="row"><span>Caves &amp; Ores</span><input type="checkbox" id="cCaves" checked></div>
     <div class="row"><span>Who can join</span><select id="cVis"><option value="private" selected>Private (join by code)</option><option value="public">Public (listed on the Join page)</option><option value="solo">Solo (only you)</option></select></div>
@@ -1345,6 +1346,7 @@ const WATER_LEVEL = 16;
 function terrainHeight(wx, wz) {
   if (netherMode) return 9 + Math.floor(smoothNoise(wx * 0.045 + 90, wz * 0.045 - 30) * 5);
   if (brawlWorld) return 20;
+  if (hsMap) return hsGround(wx, wz);
   const n1 = smoothNoise(wx * 0.04, wz * 0.04) * 14;
   const n2 = smoothNoise(wx * 0.12, wz * 0.12) * 4;
   return Math.floor(10 + n1 + n2);
@@ -1414,7 +1416,7 @@ function isUnderground(wx, wy, wz) {
   }
   return false;
 }
-function areaName(wx, wy, wz) { if (brawlWorld) return 'Arena'; if (netherMode) return 'The Nether'; return isUnderground(wx, wy, wz) ? 'Mines' : biomeAt(wx, wz); }
+function areaName(wx, wy, wz) { if (brawlWorld) return 'Arena'; if (hsMap) return HS_MAPS[hsMap].name; if (netherMode) return 'The Nether'; return isUnderground(wx, wy, wz) ? 'Mines' : biomeAt(wx, wz); }
 
 function brawlChunk(cx, cz) {
   const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
@@ -1477,7 +1479,151 @@ function netherBastionBlockAt(b, y) {
   }
   return 0;
 }
+// ----- Hide & Seek maps: closed 150x150 arenas (x and z from -75 to 74, boundary wall on the outer ring) -----
+const HS_MAPS = [null,
+  { name: 'Whispering Woods', ceil: 44, spawn: [0.5, 0.5] },
+  { name: 'Sandstone Town',   ceil: 36, spawn: [0.5, 0.5] },
+  { name: 'Stone Maze',       ceil: 20, spawn: [2.5, 2.5] }];
+let hsMap = 0;
+const hsInside = (wx, wz) => wx >= -75 && wx < 75 && wz >= -75 && wz < 75;
+function hsGround(wx, wz) {
+  if (hsMap === 1) {
+    if (Math.hypot(wx, wz) < 8) return 18;
+    return Math.floor(17 + smoothNoise(wx * 0.05 + 40, wz * 0.05 - 17) * 7 + smoothNoise(wx * 0.15, wz * 0.15) * 2);
+  }
+  return hsMap === 2 ? 18 : 16;
+}
+let hsMazeCache = null;
+function hsMaze() {
+  if (hsMazeCache && hsMazeCache.seed === worldSeed) return hsMazeCache;
+  let a = (worldSeed ^ 0x9e3779b9) >>> 0;
+  const rnd = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const N = 24;
+  const openW = [], openN = [], seen = [];
+  for (let i = 0; i < N; i++) { openW.push(new Uint8Array(N)); openN.push(new Uint8Array(N)); seen.push(new Uint8Array(N)); }
+  const stack = [[12, 12]]; seen[12][12] = 1;
+  while (stack.length) {
+    const [ci, cj] = stack[stack.length - 1];
+    const nb = [];
+    if (ci > 0 && !seen[ci - 1][cj]) nb.push([ci - 1, cj, 0]);
+    if (ci < N - 1 && !seen[ci + 1][cj]) nb.push([ci + 1, cj, 1]);
+    if (cj > 0 && !seen[ci][cj - 1]) nb.push([ci, cj - 1, 2]);
+    if (cj < N - 1 && !seen[ci][cj + 1]) nb.push([ci, cj + 1, 3]);
+    if (!nb.length) { stack.pop(); continue; }
+    const [ni, nj, dir] = nb[Math.floor(rnd() * nb.length)];
+    if (dir === 0) openW[ci][cj] = 1; else if (dir === 1) openW[ni][nj] = 1;
+    else if (dir === 2) openN[ci][cj] = 1; else openN[ni][nj] = 1;
+    seen[ni][nj] = 1; stack.push([ni, nj]);
+  }
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {   // a few extra openings so there are loops
+    if (i > 0 && rnd() < 0.09) openW[i][j] = 1;
+    if (j > 0 && rnd() < 0.09) openN[i][j] = 1;
+  }
+  return (hsMazeCache = { seed: worldSeed, openW, openN });
+}
+function hsMazeWall(wx, wz) {
+  const mx = wx + 75, mz = wz + 75;
+  if (mx < 2 || mz < 2 || mx >= 148 || mz >= 148) return true;   // solid ring so nothing is cut off from the maze
+  const u = mx - 2, v = mz - 2, i = Math.floor(u / 6), j = Math.floor(v / 6), m = u % 6, n = v % 6;
+  const xs = m < 2, zs = n < 2;
+  if (xs && zs) return true;
+  if (i === 24 || j === 24) return true;
+  const M = hsMaze();
+  if (xs) return i === 0 || !M.openW[i][j];
+  if (zs) return j === 0 || !M.openN[i][j];
+  return false;
+}
+function hsTownBlock(wx, y, wz, h) {
+  const mx = wx + 75, mz = wz + 75;
+  const li = Math.floor(mx / 25), lj = Math.floor(mz / 25), lx = mx % 25, lz = mz % 25;
+  if (lx < 5 || lz < 5) return 0;
+  const r = (a, b) => hash2(li * 31.7 + a, lj * 17.3 + b);
+  const built = r(9, 10) > 0.12;
+  const w = 10 + 2 * Math.floor(r(1, 2) * 4), d = 10 + 2 * Math.floor(r(3, 4) * 4);
+  const x0 = 5 + Math.floor(r(5, 6) * (20 - w + 1)), z0 = 5 + Math.floor(r(7, 8) * (20 - d + 1));
+  const H = 4 + Math.floor(r(11, 12) * 3);
+  const bx = lx - x0, bz = lz - z0;
+  if (built && bx >= 0 && bx < w && bz >= 0 && bz < d) {
+    if (y === h) return 5;
+    const ex = bx === 0 || bx === w - 1, ez = bz === 0 || bz === d - 1;
+    if (y === h + H + 1) return 5;
+    if (y === h + H + 2) return ((ex || ez) && (bx + bz) % 2 === 0) ? 48 : 0;
+    if (y > h + H + 2 || y < h) return 0;
+    if (ex || ez) {
+      if (ex && ez) return 4;
+      const midx = Math.floor(w / 2), midz = Math.floor(d / 2);
+      if (y <= h + 3) {
+        if (bz === 0 && (bx === midx - 1 || bx === midx)) return 0;
+        if (bz === d - 1 && r(13, 14) > 0.5 && (bx === midx - 1 || bx === midx)) return 0;
+        if (bx === 0 && r(15, 16) > 0.5 && (bz === midz - 1 || bz === midz)) return 0;
+        if (bx === w - 1 && r(17, 18) > 0.5 && (bz === midz - 1 || bz === midz)) return 0;
+      }
+      if (y === h + 2 && ((ez ? bx : bz) % 3 === 1)) return 3;
+      return 59;
+    }
+    if (r(19, 20) > 0.4 && bz === Math.floor(d / 2) && y <= h + H && !(bx >= 2 && bx <= 3) && !(bx >= w - 4 && bx <= w - 3)) return 5;
+    if (y === h + 1 && hash2(wx * 1.3 + 5, wz * 2.1 - 3) < 0.05) return 4;
+    return 0;
+  }
+  if (y > h) {
+    const q = hash2(wx * 3.7 + 1, wz * 1.9 + 8);
+    if (q < 0.012) return y <= h + 1 + Math.floor(q * 250) % 3 ? 12 : 0;
+    if (q > 0.992 && y <= h + 2) return 4;
+  }
+  return 0;
+}
+function hsMapChunk(cx, cz) {
+  const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+  if (cx * CHUNK_SIZE >= 75 || cx * CHUNK_SIZE + CHUNK_SIZE <= -75 || cz * CHUNK_SIZE >= 75 || cz * CHUNK_SIZE + CHUNK_SIZE <= -75) return data;
+  for (let x = 0; x < CHUNK_SIZE; x++) for (let z = 0; z < CHUNK_SIZE; z++) {
+    const wx = cx * CHUNK_SIZE + x, wz = cz * CHUNK_SIZE + z;
+    if (!hsInside(wx, wz)) continue;
+    const at = (y) => (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
+    if (wx === -75 || wx === 74 || wz === -75 || wz === 74) { for (let y = 0; y < CHUNK_HEIGHT; y++) data[at(y)] = 6; continue; }
+    const h = hsGround(wx, wz);
+    for (let y = 0; y <= h; y++) {
+      let id = 6;
+      if (y === h) id = hsMap === 1 ? 1 : hsMap === 2 ? ((((wx + 75) % 25 < 5) || ((wz + 75) % 25 < 5)) ? 48 : 13) : 50;
+      else if (y >= h - 3) id = hsMap === 1 ? 2 : hsMap === 2 ? 59 : 6;
+      if (y === 0) id = 6;
+      data[at(y)] = id;
+    }
+    if (hsMap === 1) {
+      if (Math.hypot(wx, wz) < 7) continue;
+      const trunk = (tx, tz) => Math.hypot(tx, tz) >= 7 && hash2(tx * 1.7 + 11, tz * 2.3 - 5) < 0.035;
+      if (trunk(wx, wz)) for (let y = h + 1; y <= h + 4; y++) data[at(y)] = 4;
+      for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+        const tx = wx + dx, tz = wz + dz;
+        if (!hsInside(tx, tz) || !trunk(tx, tz)) continue;
+        const th = hsGround(tx, tz);
+        for (let y = th + 3; y <= th + 5; y++) {
+          if (Math.abs(dx) + Math.abs(dz) + Math.abs(y - (th + 4)) <= 3 && y < CHUNK_HEIGHT && data[at(y)] === 0) data[at(y)] = 10;
+        }
+      }
+      const q = hash2(wx * 2.9 + 77, wz * 1.1 - 40);
+      if (q < 0.02 && data[at(h + 1)] === 0) data[at(h + 1)] = 10;
+      else if (q > 0.985 && data[at(h + 1)] === 0) { data[at(h + 1)] = 48; if (q > 0.993) data[at(h + 2)] = 48; }
+    } else if (hsMap === 2) {
+      for (let y = h; y <= h + 9 && y < CHUNK_HEIGHT; y++) { const b = hsTownBlock(wx, y, wz, h); if (b) data[at(y)] = b; }
+    } else if (hsMap === 3) {
+      if (hsMazeWall(wx, wz)) {
+        const k = hash2(wx * 1.1 + 3, wz * 2.7 + 5);
+        for (let y = h + 1; y <= h + 7; y++) data[at(y)] = k < 0.28 ? 48 : 6;
+      }
+    }
+  }
+  return data;
+}
+function hsClampPlayer() {
+  if (!hsMap) return;
+  const lim = 73.65;
+  if (player.x < -lim) { player.x = -lim; player.vx = 0; } else if (player.x > lim) { player.x = lim; player.vx = 0; }
+  if (player.z < -lim) { player.z = -lim; player.vz = 0; } else if (player.z > lim) { player.z = lim; player.vz = 0; }
+  const c = HS_MAPS[hsMap].ceil;
+  if (player.y > c) { player.y = c; if (player.vy > 0) player.vy = 0; }
+}
 function generateChunkData(cx, cz) {
+  if (hsMap) return hsMapChunk(cx, cz);
   if (brawlWorld) return brawlChunk(cx, cz);
   if (netherMode) {
     const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
@@ -2400,9 +2546,9 @@ $('quitBtn').onclick = (e) => { e.stopPropagation(); quitToMenu(); };
 $('settingsBack').onclick = () => closeScreen();
 $('invClose').onclick = () => closeScreen();
 $('mmSettings').onclick = () => openScreen('settings');
-$('mmNew').onclick = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; $('cHideHint').style.display = $('cMode').value === 'hideandseek' ? 'block' : 'none'; $('cName').value = 'New World'; $('cSeed').value = ''; $('cMobs').checked = true; $('cCaves').checked = true; $('cVis').value = 'private'; $('cDay').value = 6; $('cvDay').textContent = '6 min'; openScreen('create'); };
+$('mmNew').onclick = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; $('cHideHint').style.display = $('cHsRow').style.display = $('cMode').value === 'hideandseek' ? 'block' : 'none'; $('cName').value = 'New World'; $('cSeed').value = ''; $('cMobs').checked = true; $('cCaves').checked = true; $('cVis').value = 'private'; $('cDay').value = 6; $('cvDay').textContent = '6 min'; openScreen('create'); };
 $('cCancel').onclick = () => closeScreen();
-$('cMode').onchange = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; $('cHideHint').style.display = $('cMode').value === 'hideandseek' ? 'block' : 'none'; };
+$('cMode').onchange = () => { $('cBrawlHint').style.display = $('cMode').value === 'brawl' ? 'block' : 'none'; $('cHideHint').style.display = $('cHsRow').style.display = $('cMode').value === 'hideandseek' ? 'block' : 'none'; };
 $('cPlay').onclick = () => createAndPlay();
 $('cDay').oninput = (e) => { $('cvDay').textContent = e.target.value + ' min'; };
 
@@ -2858,6 +3004,7 @@ function startWorld(entry, pre) {
   settings.mobs = entry.mobs !== false;
   cavesOn = entry.caves === true;
   brawlWorld = entry.brawl === true;
+  hsMap = entry.mode === 'hideandseek' ? ((entry.hsMap | 0) >= 0 && (entry.hsMap | 0) <= 3 ? entry.hsMap | 0 : 0) : 0;
   settings.dayLen = entry.dayLen || 6;
   netDayLen = null;
   worldSeed = entry.seed;
@@ -2874,7 +3021,9 @@ function startWorld(entry, pre) {
   for (let i = 0; i < 36; i++) inv[i] = emptySlot();
   armor.head = 0; armor.chest = 0; selectedSlot = 0;
   for (let i = 0; i < 9; i++) creativeBar[i] = { id: i + 1, count: 1 };
-  player.x = 8.5; player.z = 8.5; player.y = terrainHeight(8, 8) + 3;
+  player.x = 8.5; player.z = 8.5;
+  if (hsMap) { player.x = HS_MAPS[hsMap].spawn[0]; player.z = HS_MAPS[hsMap].spawn[1]; }
+  player.y = terrainHeight(Math.floor(player.x), Math.floor(player.z)) + 3;
   player.vx = player.vy = player.vz = 0;
   const hadSave = brawlWorld ? false : loadSaveInto(entry);
   if (brawlWorld) { brawl.best = entry.best || 0; brawlReset(); }
@@ -2904,7 +3053,7 @@ function quitToMenu() {
   cloudStop();
   $('cloudDot').textContent = '';
   mpStop();
-  inGame = false; screen = null; currentWorld = null; guestSession = false; brawlWorld = false;
+  inGame = false; screen = null; currentWorld = null; guestSession = false; brawlWorld = false; hsMap = 0;
   $('brawlHud').style.display = 'none'; $('brawlBanner').style.display = 'none';
   mobs.length = 0; drops.length = 0; minecarts.length = 0; ridingCart = null;
   deadTimer = 0;
@@ -2922,6 +3071,7 @@ async function createAndPlay() {
   const isB = $('cMode').value === 'brawl';
   const entry = { id: newId(), name, seed: ps.seed, seedText: ps.text, mode: isB ? 'survival' : $('cMode').value, difficulty: isB ? 'normal' : $('cDiff').value, mobs: isB ? true : $('cMobs').checked, caves: isB ? false : $('cCaves').checked, dayLen: +$('cDay').value, rid: newRid(), created: Date.now(), played: Date.now() };
   if (isB) { entry.brawl = true; entry.best = 0; }
+  entry.hsMap = entry.mode === 'hideandseek' ? (+$('cHsMap').value | 0) : 0;
   entry.vis = isB ? 'solo' : $('cVis').value;
   if (entry.vis === 'solo') entry.solo = true;
   if (entry.vis !== 'solo') {
@@ -3057,7 +3207,7 @@ function cloudCode(w){if(!w||!w.inviteToken)return '';const j=JSON.stringify({u:
 function parseCloudCode(s){try{s=String(s||'').trim();const i=s.indexOf('MCZ2.');if(i<0)return null;s=s.slice(i+5).replace(/[^A-Za-z0-9_\-]/g,'').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const o=JSON.parse(atob(s));if(o.u!==CLOUD_API||!/^[a-f0-9]{24}$/.test(String(o.c))||typeof o.t!=='string'||o.t.length<32)return null;return{u:o.u,c:o.c,t:o.t};}catch(e){return null;}}
 function cloudLink(w){const c=cloudCode(w);return c?location.href.split('#')[0]+'#join='+c:'';}
 async function cloudReq(base,path,method='GET',body,token,keepalive){const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),15000),headers={'content-type':'application/json'};if(token)headers.authorization='Bearer '+token;try{const res=await fetch(base+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:ctl.signal,keepalive:!!keepalive});let data=null;try{data=await res.json();}catch(e){}if(!res.ok){const er=new Error(data&&data.error||'HTTP '+res.status);er.status=res.status;throw er;}return data;}finally{clearTimeout(to);}}
-const cloudMeta=w=>({name:w.name,visibility:'private',settings:{seed:w.seed,seedText:w.seedText,mode:w.mode,difficulty:w.difficulty||'normal',mobs:w.mobs!==false,caves:w.caves===true,dayLen:w.dayLen||6,epoch:w.epoch||Date.now()}});
+const cloudMeta=w=>({name:w.name,visibility:'private',settings:{seed:w.seed,seedText:w.seedText,mode:w.mode,difficulty:w.difficulty||'normal',mobs:w.mobs!==false,caves:w.caves===true,hsMap:w.hsMap|0,dayLen:w.dayLen||6,epoch:w.epoch||Date.now()}});
 function cloudQueueBlock(wx,wy,wz,id){const cx=Math.floor(wx/CHUNK_SIZE),cz=Math.floor(wz/CHUNK_SIZE),lx=((wx%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE,lz=((wz%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE,ck=(netherMode?'n:':'o:')+cx+'_'+cz;cloudPending.set('edits/'+ck+'/'+((wy*CHUNK_SIZE+lz)*CHUNK_SIZE+lx),id);cloudDirty=true;}
 function cloudQueueSign(key,sign){if(isCloud()&&currentWorld.cloudRole==='visitor'){mpToast('You have visitor permission in this world.');return;}const p=key.split(',');cloudPending.set('signs/'+p[0]+'_'+p[1]+'_'+p[2],sign?{t:sign.text,f:sign.face}:null);cloudDirty=true;}
 const pendKey=w=>'minecraftz_cpend_'+w.cid;
@@ -3104,7 +3254,7 @@ async function cloudPoll(){if(!isCloud()||cloudPollBusy)return;const w=currentWo
 function cloudStart(){cloudStop();const w=currentWorld;cloudTimer=setInterval(()=>{cloudFlush(false);if(cloudDirty)cloudPersistPend(w);},700);cloudPoll();cloudPollTimer=setInterval(cloudPoll,2500);}
 function cloudStop(){cloudPlayers.clear();clearInterval(cloudTimer);cloudTimer=null;clearInterval(cloudPollTimer);cloudPollTimer=null;}
 window.addEventListener('pagehide',()=>{if(isCloud())cloudFlush(true);});
-async function startCloudWorld(entry){if(cloudLoading)return;chatJoinAt=Date.now();cloudLoading=true;mpToast('Loading cloud world...');try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+entry.cid,'GET',undefined,entry.cloudToken);if(!d||!d.meta)throw Error('World data missing.');const c=d.meta.settings||{};Object.assign(entry,{name:String(d.meta.name||entry.name).slice(0,32),seed:Number(c.seed)||entry.seed,seedText:String(c.seedText||c.seed||entry.seed),mode:['survival','hideandseek'].includes(c.mode)?c.mode:'creative',difficulty:c.difficulty||'normal',mobs:c.mobs!==false,caves:c.caves===true,dayLen:c.dayLen||6,cloudRole:d.role||entry.cloudRole||'visitor'});cloudLoading=false;startWorld(entry,d);lockGame();}catch(e){cloudLoading=false;mpToast('Could not open cloud world: '+e.message);}}
+async function startCloudWorld(entry){if(cloudLoading)return;chatJoinAt=Date.now();cloudLoading=true;mpToast('Loading cloud world...');try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+entry.cid,'GET',undefined,entry.cloudToken);if(!d||!d.meta)throw Error('World data missing.');const c=d.meta.settings||{};Object.assign(entry,{name:String(d.meta.name||entry.name).slice(0,32),seed:Number(c.seed)||entry.seed,seedText:String(c.seedText||c.seed||entry.seed),mode:['survival','hideandseek'].includes(c.mode)?c.mode:'creative',difficulty:c.difficulty||'normal',mobs:c.mobs!==false,caves:c.caves===true,hsMap:Number(c.hsMap)|0,dayLen:c.dayLen||6,cloudRole:d.role||entry.cloudRole||'visitor'});cloudLoading=false;startWorld(entry,d);lockGame();}catch(e){cloudLoading=false;mpToast('Could not open cloud world: '+e.message);}}
 async function createCloudEntry(entry){try{const d=await cloudReq(CLOUD_API,'/api/worlds','POST',{name:entry.name,visibility:entry.vis==='public'?'public':'private',settings:cloudMeta(entry).settings});Object.assign(entry,{cloud:true,cid:d.id,curl:CLOUD_API,cloudToken:d.ownerToken,ownerToken:d.ownerToken,cloudRole:'owner',epoch:Date.now(),rid:d.id});return true;}catch(e){mpToast('Could not create cloud world: '+e.message);return false;}}
 async function createCloudInvite(w,role='builder'){const d=await cloudReq(CLOUD_API,'/api/worlds/'+w.cid+'/invites','POST',{role},w.ownerToken||w.cloudToken);w.inviteToken=d.token;saveWorldList();return cloudLink(w);}
 async function joinCloudCode(code,setStatus){const pc=parseCloudCode(code);if(!pc){setStatus('That is not a valid MinecraftZ cloud invite.');return;}setStatus('Checking invite...');try{const j=await cloudReq(CLOUD_API,'/api/worlds/'+pc.c+'/join','POST',{invite:pc.t});let w=worlds.find(x=>x.cid===pc.c);if(!w){w={id:newId(),name:String(j.meta.name||'Cloud world').slice(0,32),seed:0,seedText:'',mode:'creative',difficulty:'normal',mobs:true,caves:false,dayLen:6,cloud:true,cid:pc.c,curl:CLOUD_API,created:Date.now(),played:Date.now()};worlds.push(w);}Object.assign(w,{cloud:true,cid:pc.c,rid:pc.c,curl:CLOUD_API,cloudToken:pc.t,inviteToken:pc.t,cloudRole:j.role});saveWorldList();if(inGame)quitToMenu();screen=null;startCloudWorld(w);}catch(e){setStatus(e.message||'Could not join that world.');}}
@@ -3318,7 +3468,7 @@ function mpHostMsg(conn, m) {
     MP.conns.set(conn.peer, conn);
     MP.players.set(conn.peer, { id: conn.peer, name, x: player.x, y: player.y, z: player.z, yaw: 0, pitch: 0, dim: netherMode ? 1 : 0 });
     conn.send({ t: 'welcome', seed: worldSeed, seedText: currentWorld ? currentWorld.seedText : String(worldSeed),
-               mode: settings.mode, difficulty: settings.difficulty, mobs: settings.mobs, caves: cavesOn, wt: worldTime, day: dayCount, dl: settings.dayLen,
+               mode: settings.mode, difficulty: settings.difficulty, mobs: settings.mobs, caves: cavesOn, hs: hsMap, wt: worldTime, day: dayCount, dl: settings.dayLen,
                host: { name: myName(), x: player.x, y: player.y, z: player.z, dim: netherMode ? 1 : 0 }, netherMode: !!netherMode });
     if (!isCloud()) {
       for (const [k, mm] of overworldEdits) {
@@ -3558,6 +3708,7 @@ function mpFinishJoin() {
   settings.difficulty = ['peaceful', 'normal', 'hard'].includes(wl.difficulty) ? wl.difficulty : 'normal';
   settings.mobs = wl.mobs !== false;
   cavesOn = wl.caves === true;
+  hsMap = settings.mode === 'hideandseek' && Number(wl.hs) >= 1 && Number(wl.hs) <= 3 ? Number(wl.hs) | 0 : 0;
   if (Number.isFinite(wl.seed)) worldSeed = wl.seed;
   if (!isCloud()) {
     edits.clear(); overworldEdits.clear(); netherEdits.clear();
@@ -6085,6 +6236,7 @@ function loop(now) {
     brawlTick(dt);
     if (!brawlWorld) updateFluids(dt);
     updateFurnaces(dt);
+    hsClampPlayer();
     updateMinecarts(dt);
     updateVillagers(dt);
     cloudSendPresence(dt);
