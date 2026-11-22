@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.3.0</title>
+<title>MinecraftZ v5.3.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -4339,6 +4339,7 @@ function cycleView() {
   $('sView').value = settings.view; saveSettings();
 }
 function toggleNoclip() {
+  if (settings.mode === 'hideandseek') { mpToast('Noclip is turned off in Hide & Seek.'); return; }
   if (isSurvival()) return;
   if (ridingCart) dismountCart();
   player.noclip = !player.noclip;
@@ -6128,8 +6129,8 @@ function loop(now) {
   }
   if (touchMode) {
     $('tExit').style.display = ridingCart ? 'flex' : 'none';
-    $('tFly').style.display = isSurvival() ? 'none' : 'flex';
-    if (isSurvival() && player.noclip) { player.noclip = false; document.body.classList.remove('noclipping'); }
+    $('tFly').style.display = (isSurvival() || settings.mode === 'hideandseek') ? 'none' : 'flex';
+    if ((isSurvival() || settings.mode === 'hideandseek') && player.noclip) { player.noclip = false; document.body.classList.remove('noclipping'); }
   }
   document.getElementById('mpLine').textContent = MP.role === 'none' ? (inGame && settings.online && !brawlWorld ? 'Online: ' + MP.status : '') : (MP.role === 'host' ? 'Hosting' : 'Joined') + ' · ' + (MP.players.size + 1) + ' online';
 
@@ -6236,6 +6237,7 @@ function loop(now) {
     brawlTick(dt);
     if (!brawlWorld) updateFluids(dt);
     updateFurnaces(dt);
+    if (settings.mode === 'hideandseek' && player.noclip) { player.noclip = false; document.body.classList.remove('noclipping'); document.getElementById('mode').textContent = 'Walking'; }
     hsClampPlayer();
     updateMinecarts(dt);
     updateVillagers(dt);
