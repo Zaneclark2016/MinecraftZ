@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.1.0</title>
+<title>MinecraftZ v5.2.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -214,7 +214,7 @@
     <div class="hint">The same seed gives the same terrain, but every world is its own separate world, even with the same seed, so nobody can land in yours by accident. To play together, use the Friends list or share your world's join code.</div>
     <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="hideandseek">Hide &amp; Seek</option><option value="survival">Survival</option><option value="brawl">Brawl (arena waves)</option></select></div>
     <div class="hint" id="cBrawlHint" style="display:none">Brawl: fight waves of mobs in a closed 20x20 arena. Earn points for every kill and spend them in the shop between waves. The other world options are ignored.</div>
-    <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides, then the seeker hunts for 5 minutes.</div>
+    <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides. Then the seeker has 5 minutes to tag hiders by clicking or tapping near them, and every tagged hider becomes another seeker.</div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
     <div class="row"><span>Caves &amp; Ores</span><input type="checkbox" id="cCaves" checked></div>
     <div class="row"><span>Who can join</span><select id="cVis"><option value="private" selected>Private (join by code)</option><option value="public">Public (listed on the Join page)</option><option value="solo">Solo (only you)</option></select></div>
@@ -3349,6 +3349,8 @@ function mpHostMsg(conn, m) {
     chatPost(p.name, msg);
     const out = { t: 'chat', n: p.name, m: msg };
     for (const [id, c] of MP.conns) if (id !== conn.peer) { try { c.send(out); } catch (e) {} }
+  } else if (m.t === 'hstag') {
+    hsHostTag(conn.peer, String(m.id || ''));
   } else if (m.t === 'block') {
     if (!MP.conns.has(conn.peer)) return;
     mpApplyBlock(m);
@@ -3358,45 +3360,84 @@ function mpHostMsg(conn, m) {
 }
 
 // ----- Hide & Seek rounds (host runs the clock, clients follow) -----
-const HS = { phase: 'lobby', seeker: null, seekerName: '', endAt: 0, hideSecs: 30, seekSecs: 300, lastSync: 0, shown: 'lobby' };
+const HS = { phase: 'lobby', seekers: [], names: {}, endAt: 0, hideSecs: 30, seekSecs: 300, lastSync: 0, shown: 'lobby' };
 const hsActive = () => settings.mode === 'hideandseek' && inGame && (MP.role === 'host' || MP.role === 'client');
-const hsAmSeeker = () => !!HS.seeker && HS.seeker === MP.myId;
+const hsAmSeeker = () => !!MP.myId && HS.seekers.includes(MP.myId);
 const hsFrozen = () => settings.mode === 'hideandseek' && HS.phase === 'hide' && hsAmSeeker();
 const hsLeft = () => Math.max(0, Math.ceil((HS.endAt - performance.now()) / 1000));
 const hsClock = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
-function hsMsg(note) { return { t: 'hs', p: HS.phase, s: HS.seeker, n: HS.seekerName, left: Math.max(0, (HS.endAt - performance.now()) / 1000), note: note || '' }; }
+const hsSeekerNames = () => HS.seekers.map(id => HS.names[id] || 'Player').join(', ');
+function hsAllIds() { const a = [MP.myId]; for (const q of MP.players.values()) a.push(q.id); return a; }
+function hsNameOf(id) { return id === MP.myId ? myName() : ((MP.players.get(id) || {}).name || 'Player'); }
+function hsMsg(note) { return { t: 'hs', p: HS.phase, s: HS.seekers.slice(), n: HS.seekers.map(id => HS.names[id] || 'Player'), left: Math.max(0, (HS.endAt - performance.now()) / 1000), note: note || '' }; }
 function hsBroadcast(note) { const m = hsMsg(note); for (const c of MP.conns.values()) { try { c.send(m); } catch (e) {} } }
 function hsSet(m) {
+  const prevPhase = HS.phase, wasSeeker = hsAmSeeker();
   HS.phase = m.p === 'hide' || m.p === 'seek' ? m.p : 'lobby';
-  HS.seeker = HS.phase === 'lobby' ? null : (m.s || null);
-  HS.seekerName = String(m.n || '').slice(0, 16);
+  HS.seekers = HS.phase === 'lobby' || !Array.isArray(m.s) ? [] : m.s.map(String).slice(0, 8);
+  HS.names = {}; HS.seekers.forEach((id, k) => { HS.names[id] = String((m.n || [])[k] || 'Player').slice(0, 16); });
   HS.endAt = performance.now() + (Number(m.left) || 0) * 1000;
   hsNotice(m.note);
+  if (prevPhase === 'seek' && HS.phase === 'seek' && !wasSeeker && hsAmSeeker()) mpToast('You were found! You are a seeker now.');
   hsUi();
 }
 function hsNotice(note) {
-  if (HS.phase === HS.shown && !note) return;
-  const was = HS.shown; HS.shown = HS.phase;
-  if (HS.phase === 'hide') mpToast(hsAmSeeker() ? 'You are the SEEKER! Eyes shut while the others hide...' : HS.seekerName + ' is the seeker. HIDE!');
-  else if (HS.phase === 'seek') mpToast(hsAmSeeker() ? 'Ready or not, here you come!' : 'The seeker is looking for you!');
-  else if (was !== 'lobby' || note) mpToast(note || 'Round over');
+  const was = HS.shown;
+  if (HS.phase === was && !note) return;
+  HS.shown = HS.phase;
+  if (HS.phase === 'hide' && was !== 'hide') mpToast(hsAmSeeker() ? 'You are the SEEKER! Eyes shut while the others hide...' : hsSeekerNames() + ' is the seeker. HIDE!');
+  else if (HS.phase === 'seek' && was !== 'seek') mpToast(hsAmSeeker() ? 'Ready or not, here you come!' : 'The seeker is looking for you!');
+  else if (HS.phase === 'lobby' && (was !== 'lobby' || note)) mpToast(note || 'Round over');
+  else if (note) mpToast(note);
 }
 function hsStart() {
   if (MP.role !== 'host' || settings.mode !== 'hideandseek') return;
-  const all = [{ id: MP.myId, name: myName() }];
-  for (const q of MP.players.values()) all.push({ id: q.id, name: q.name });
+  const all = hsAllIds();
   if (all.length < 2) { mpToast('Need at least 2 players for a round.'); return; }
   const pick = all[Math.floor(Math.random() * all.length)];
-  HS.phase = 'hide'; HS.seeker = pick.id; HS.seekerName = pick.name; HS.endAt = performance.now() + HS.hideSecs * 1000;
+  HS.phase = 'hide'; HS.seekers = [pick]; HS.names = { [pick]: hsNameOf(pick) }; HS.endAt = performance.now() + HS.hideSecs * 1000;
   hsNotice(); hsBroadcast(); hsUi();
 }
 function hsEnd(why) {
-  HS.phase = 'lobby'; HS.seeker = null; HS.seekerName = ''; HS.endAt = 0;
+  HS.phase = 'lobby'; HS.seekers = []; HS.names = {}; HS.endAt = 0;
   hsNotice(why || 'Round over'); hsBroadcast(why || 'Round over'); hsUi();
 }
 function hsToggle() {
   if (!hsActive() || MP.role !== 'host' || screen !== null) return;
   if (HS.phase === 'lobby') hsStart(); else hsEnd('Round ended by the host');
+}
+// Host decides tags: the tagger must be a seeker, the target a hider, and they must be close together
+function hsHostTag(by, target) {
+  if (MP.role !== 'host' || HS.phase !== 'seek' || !HS.seekers.includes(by) || HS.seekers.includes(target)) return;
+  const pos = (id) => id === MP.myId ? player : MP.players.get(id);
+  const a = pos(by), b = pos(target);
+  if (!a || !b || Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) > 6) return;
+  HS.seekers.push(target); HS.names[target] = hsNameOf(target);
+  const left = hsAllIds().filter(id => !HS.seekers.includes(id)).length;
+  if (left === 0) { hsEnd('Everyone was found! The seekers win!'); return; }
+  const note = hsNameOf(target) + ' was found by ' + hsNameOf(by) + '! ' + left + ' hider' + (left === 1 ? '' : 's') + ' left';
+  hsNotice(note); hsBroadcast(note); hsUi();
+}
+// Seeker taps or clicks near a hider they are facing
+function hsTryTag() {
+  if (!hsActive() || HS.phase !== 'seek' || !hsAmSeeker()) return false;
+  const ld = getLookDir(), ex = player.x, ey = player.y + 1.62, ez = player.z;
+  let best = null, bestD = 4.2;
+  for (const q of MP.players.values()) {
+    if (HS.seekers.includes(q.id) || (q.dim === 1) !== !!netherMode) continue;
+    const dx = q.x - ex, dy = q.y + 0.9 - ey, dz = q.z - ez, d = Math.hypot(dx, dy, dz);
+    if (d > bestD || d < 0.01) continue;
+    if ((dx * ld.x + dy * ld.y + dz * ld.z) / d < 0.7) continue;
+    best = q; bestD = d;
+  }
+  if (!best) {
+    if (MP.role === 'host' && !HS.seekers.includes(MP.myId)) return false;
+    return false;
+  }
+  mpToast('Tagged ' + best.name + '!');
+  if (MP.role === 'host') hsHostTag(MP.myId, best.id);
+  else if (MP.hostConn) { try { MP.hostConn.send({ t: 'hstag', id: best.id }); } catch (e) {} }
+  return true;
 }
 function hsUi() {
   const on = hsActive();
@@ -3404,8 +3445,11 @@ function hsUi() {
   if (!on) { bar.style.display = blind.style.display = btn.style.display = 'none'; return; }
   let t;
   if (HS.phase === 'lobby') t = MP.role === 'host' ? 'Hide & Seek: press Start round when everyone is in' : 'Hide & Seek: waiting for the host to start a round';
-  else if (HS.phase === 'hide') t = hsAmSeeker() ? 'You are the seeker' : HS.seekerName + ' is counting. Hide! ' + hsLeft() + 's';
-  else t = (hsAmSeeker() ? 'You are the seeker. Find everyone!' : HS.seekerName + ' is seeking') + '  ' + hsClock(hsLeft());
+  else if (HS.phase === 'hide') t = hsAmSeeker() ? 'You are the seeker' : hsSeekerNames() + ' is counting. Hide! ' + hsLeft() + 's';
+  else {
+    const hidersLeft = hsAllIds().filter(id => !HS.seekers.includes(id)).length;
+    t = (hsAmSeeker() ? 'You are a seeker. Tap or click a hider to tag them!' : 'Seekers: ' + hsSeekerNames()) + '  ' + hidersLeft + ' hider' + (hidersLeft === 1 ? '' : 's') + ' left  ' + hsClock(hsLeft());
+  }
   if (bar.textContent !== t) bar.textContent = t;
   bar.style.display = screen === null || screen === 'chat' ? 'block' : 'none';
   if (hsFrozen()) { blind.style.display = 'flex'; const b = 'You are the seeker!\nCounting... ' + hsLeft(); if (blind.textContent !== b) blind.textContent = b; blind.style.whiteSpace = 'pre-line'; }
@@ -3414,15 +3458,23 @@ function hsUi() {
   const bt = HS.phase === 'lobby' ? 'Start round (H)' : 'End round (H)';
   if (btn.textContent !== bt) btn.textContent = bt;
 }
+function hsReset() { HS.phase = 'lobby'; HS.seekers = []; HS.names = {}; HS.shown = 'lobby'; }
 function hsLoop() {
-  if (!hsActive()) { if (HS.phase !== 'lobby') { HS.phase = 'lobby'; HS.seeker = null; HS.shown = 'lobby'; } hsUi(); return; }
+  if (!hsActive()) { if (HS.phase !== 'lobby') hsReset(); hsUi(); return; }
   if (MP.role === 'host') {
     const now = performance.now();
-    if (HS.phase !== 'lobby' && HS.seeker !== MP.myId && !MP.players.has(HS.seeker)) hsEnd('The seeker left, round over');
-    else if (HS.phase === 'hide' && now >= HS.endAt) { HS.phase = 'seek'; HS.endAt = now + HS.seekSecs * 1000; hsNotice(); hsBroadcast(); }
+    if (HS.phase !== 'lobby') {
+      const live = hsAllIds();
+      const before = HS.seekers.length;
+      HS.seekers = HS.seekers.filter(id => live.includes(id));
+      if (!HS.seekers.length) { hsEnd('The seeker left, round over'); hsUi(); return; }
+      if (HS.phase === 'seek' && live.every(id => HS.seekers.includes(id))) { hsEnd('Everyone was found! The seekers win!'); hsUi(); return; }
+      if (HS.seekers.length !== before) hsBroadcast();
+    }
+    if (HS.phase === 'hide' && now >= HS.endAt) { HS.phase = 'seek'; HS.endAt = now + HS.seekSecs * 1000; hsNotice(); hsBroadcast(); }
     else if (HS.phase === 'seek' && now >= HS.endAt) hsEnd('Time is up! The hiders win!');
     else if (HS.phase !== 'lobby' && now - HS.lastSync > 2000) { HS.lastSync = now; hsBroadcast(); }
-  } else if (HS.phase !== 'lobby' && performance.now() > HS.endAt + 15000) { HS.phase = 'lobby'; HS.seeker = null; HS.shown = 'lobby'; }
+  } else if (HS.phase !== 'lobby' && performance.now() > HS.endAt + 15000) hsReset();
   hsUi();
 }
 setInterval(hsLoop, 250);
@@ -4450,6 +4502,7 @@ function lightNetherPortalFromFrame(bx, by, bz) {
 
 function handleUseOrPlace(viaKey, targetOverride) {
   if (deadTimer > 0 || hsFrozen()) return;
+  if (hsTryTag()) return;
   if (viaKey || touchMode) {
     const ld = getLookDir(), lh = Math.hypot(ld.x, ld.z) || 1;
     const facing = (v) => { const dx = v.x - player.x, dz = v.z - player.z, dl = Math.hypot(dx, dz) || 1; return (dx * ld.x + dz * ld.z) / (dl * lh) > 0.5; };
@@ -4704,6 +4757,7 @@ function removeCart(cart) {
 // Creative: instant. Used by click / Q in Creative.
 function handleBreak(targetOverride) {
   if (deadTimer > 0 || hsFrozen()) return;
+  if (hsTryTag()) return;
   const target = targetOverride !== undefined ? targetOverride : raycastTarget();
   if (!target) return;
   if (target.type === 'cart') { removeCart(target.cart); return; }
