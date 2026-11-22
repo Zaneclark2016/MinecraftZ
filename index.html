@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.3.1</title>
+<title>MinecraftZ v5.3.2</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -214,8 +214,8 @@
     <div class="hint">The same seed gives the same terrain, but every world is its own separate world, even with the same seed, so nobody can land in yours by accident. To play together, use the Friends list or share your world's join code.</div>
     <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="hideandseek">Hide &amp; Seek</option><option value="survival">Survival</option><option value="brawl">Brawl (arena waves)</option></select></div>
     <div class="hint" id="cBrawlHint" style="display:none">Brawl: fight waves of mobs in a closed 20x20 arena. Earn points for every kill and spend them in the shop between waves. The other world options are ignored.</div>
-    <div class="row" id="cHsRow" style="display:none"><span>Map</span><select id="cHsMap"><option value="1">Whispering Woods (150x150)</option><option value="2">Sandstone Town (150x150)</option><option value="3">Stone Maze (150x150)</option><option value="0">Open world (no limits)</option></select></div>
-    <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. Pick a map: each is a closed 150x150 arena with a boundary wall and a height limit. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides. Then the seeker has 5 minutes to tag hiders by clicking or tapping near them, and every tagged hider becomes another seeker.</div>
+    <div class="row" id="cHsRow" style="display:none"><span>Map</span><select id="cHsMap"><option value="1">Whispering Woods (80x80)</option><option value="2">Sandstone Town (80x80)</option><option value="3">Stone Maze (80x80)</option><option value="0">Open world (no limits)</option></select></div>
+    <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. Pick a map: each is a closed 80x80 arena with a boundary wall and a height limit. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides. Then the seeker has 5 minutes to tag hiders by clicking or tapping near them, and every tagged hider becomes another seeker.</div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
     <div class="row"><span>Caves &amp; Ores</span><input type="checkbox" id="cCaves" checked></div>
     <div class="row"><span>Who can join</span><select id="cVis"><option value="private" selected>Private (join by code)</option><option value="public">Public (listed on the Join page)</option><option value="solo">Solo (only you)</option></select></div>
@@ -1479,16 +1479,17 @@ function netherBastionBlockAt(b, y) {
   }
   return 0;
 }
-// ----- Hide & Seek maps: closed 150x150 arenas (x and z from -75 to 74, boundary wall on the outer ring) -----
+// ----- Hide & Seek maps: closed 80x80 arenas (x and z from -40 to 39, boundary wall on the outer ring) -----
+const HS_HALF = 40;
 const HS_MAPS = [null,
   { name: 'Whispering Woods', ceil: 44, spawn: [0.5, 0.5] },
   { name: 'Sandstone Town',   ceil: 36, spawn: [0.5, 0.5] },
   { name: 'Stone Maze',       ceil: 20, spawn: [2.5, 2.5] }];
 let hsMap = 0;
-const hsInside = (wx, wz) => wx >= -75 && wx < 75 && wz >= -75 && wz < 75;
+const hsInside = (wx, wz) => wx >= -HS_HALF && wx < HS_HALF && wz >= -HS_HALF && wz < HS_HALF;
 function hsGround(wx, wz) {
   if (hsMap === 1) {
-    if (Math.hypot(wx, wz) < 8) return 18;
+    if (Math.hypot(wx, wz) < 6) return 18;
     return Math.floor(17 + smoothNoise(wx * 0.05 + 40, wz * 0.05 - 17) * 7 + smoothNoise(wx * 0.15, wz * 0.15) * 2);
   }
   return hsMap === 2 ? 18 : 16;
@@ -1498,10 +1499,10 @@ function hsMaze() {
   if (hsMazeCache && hsMazeCache.seed === worldSeed) return hsMazeCache;
   let a = (worldSeed ^ 0x9e3779b9) >>> 0;
   const rnd = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-  const N = 24;
+  const N = 12;
   const openW = [], openN = [], seen = [];
   for (let i = 0; i < N; i++) { openW.push(new Uint8Array(N)); openN.push(new Uint8Array(N)); seen.push(new Uint8Array(N)); }
-  const stack = [[12, 12]]; seen[12][12] = 1;
+  const stack = [[6, 6]]; seen[6][6] = 1;
   while (stack.length) {
     const [ci, cj] = stack[stack.length - 1];
     const nb = [];
@@ -1522,25 +1523,25 @@ function hsMaze() {
   return (hsMazeCache = { seed: worldSeed, openW, openN });
 }
 function hsMazeWall(wx, wz) {
-  const mx = wx + 75, mz = wz + 75;
-  if (mx < 2 || mz < 2 || mx >= 148 || mz >= 148) return true;   // solid ring so nothing is cut off from the maze
-  const u = mx - 2, v = mz - 2, i = Math.floor(u / 6), j = Math.floor(v / 6), m = u % 6, n = v % 6;
+  const mx = wx + HS_HALF, mz = wz + HS_HALF;
+  if (mx < 3 || mz < 3 || mx >= 77 || mz >= 77) return true;   // solid ring so nothing is cut off from the maze
+  const u = mx - 3, v = mz - 3, i = Math.floor(u / 6), j = Math.floor(v / 6), m = u % 6, n = v % 6;
   const xs = m < 2, zs = n < 2;
   if (xs && zs) return true;
-  if (i === 24 || j === 24) return true;
+  if (i === 12 || j === 12) return true;
   const M = hsMaze();
   if (xs) return i === 0 || !M.openW[i][j];
   if (zs) return j === 0 || !M.openN[i][j];
   return false;
 }
 function hsTownBlock(wx, y, wz, h) {
-  const mx = wx + 75, mz = wz + 75;
-  const li = Math.floor(mx / 25), lj = Math.floor(mz / 25), lx = mx % 25, lz = mz % 25;
-  if (lx < 5 || lz < 5) return 0;
+  const mx = wx + HS_HALF, mz = wz + HS_HALF;
+  const li = Math.floor(mx / 20), lj = Math.floor(mz / 20), lx = mx % 20, lz = mz % 20;
+  if (lx < 4 || lz < 4) return 0;
   const r = (a, b) => hash2(li * 31.7 + a, lj * 17.3 + b);
   const built = r(9, 10) > 0.12;
-  const w = 10 + 2 * Math.floor(r(1, 2) * 4), d = 10 + 2 * Math.floor(r(3, 4) * 4);
-  const x0 = 5 + Math.floor(r(5, 6) * (20 - w + 1)), z0 = 5 + Math.floor(r(7, 8) * (20 - d + 1));
+  const w = 8 + 2 * Math.floor(r(1, 2) * 3), d = 8 + 2 * Math.floor(r(3, 4) * 3);
+  const x0 = 4 + Math.floor(r(5, 6) * (16 - w + 1)), z0 = 4 + Math.floor(r(7, 8) * (16 - d + 1));
   const H = 4 + Math.floor(r(11, 12) * 3);
   const bx = lx - x0, bz = lz - z0;
   if (built && bx >= 0 && bx < w && bz >= 0 && bz < d) {
@@ -1574,23 +1575,23 @@ function hsTownBlock(wx, y, wz, h) {
 }
 function hsMapChunk(cx, cz) {
   const data = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
-  if (cx * CHUNK_SIZE >= 75 || cx * CHUNK_SIZE + CHUNK_SIZE <= -75 || cz * CHUNK_SIZE >= 75 || cz * CHUNK_SIZE + CHUNK_SIZE <= -75) return data;
+  if (cx * CHUNK_SIZE >= HS_HALF || cx * CHUNK_SIZE + CHUNK_SIZE <= -HS_HALF || cz * CHUNK_SIZE >= HS_HALF || cz * CHUNK_SIZE + CHUNK_SIZE <= -HS_HALF) return data;
   for (let x = 0; x < CHUNK_SIZE; x++) for (let z = 0; z < CHUNK_SIZE; z++) {
     const wx = cx * CHUNK_SIZE + x, wz = cz * CHUNK_SIZE + z;
     if (!hsInside(wx, wz)) continue;
     const at = (y) => (y * CHUNK_SIZE + z) * CHUNK_SIZE + x;
-    if (wx === -75 || wx === 74 || wz === -75 || wz === 74) { for (let y = 0; y < CHUNK_HEIGHT; y++) data[at(y)] = 6; continue; }
+    if (wx === -HS_HALF || wx === HS_HALF - 1 || wz === -HS_HALF || wz === HS_HALF - 1) { for (let y = 0; y < CHUNK_HEIGHT; y++) data[at(y)] = 6; continue; }
     const h = hsGround(wx, wz);
     for (let y = 0; y <= h; y++) {
       let id = 6;
-      if (y === h) id = hsMap === 1 ? 1 : hsMap === 2 ? ((((wx + 75) % 25 < 5) || ((wz + 75) % 25 < 5)) ? 48 : 13) : 50;
+      if (y === h) id = hsMap === 1 ? 1 : hsMap === 2 ? ((((wx + HS_HALF) % 20 < 4) || ((wz + HS_HALF) % 20 < 4)) ? 48 : 13) : 50;
       else if (y >= h - 3) id = hsMap === 1 ? 2 : hsMap === 2 ? 59 : 6;
       if (y === 0) id = 6;
       data[at(y)] = id;
     }
     if (hsMap === 1) {
-      if (Math.hypot(wx, wz) < 7) continue;
-      const trunk = (tx, tz) => Math.hypot(tx, tz) >= 7 && hash2(tx * 1.7 + 11, tz * 2.3 - 5) < 0.035;
+      if (Math.hypot(wx, wz) < 5) continue;
+      const trunk = (tx, tz) => Math.hypot(tx, tz) >= 5 && hash2(tx * 1.7 + 11, tz * 2.3 - 5) < 0.035;
       if (trunk(wx, wz)) for (let y = h + 1; y <= h + 4; y++) data[at(y)] = 4;
       for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
         const tx = wx + dx, tz = wz + dz;
@@ -1616,7 +1617,7 @@ function hsMapChunk(cx, cz) {
 }
 function hsClampPlayer() {
   if (!hsMap) return;
-  const lim = 73.65;
+  const lim = HS_HALF - 1.35;
   if (player.x < -lim) { player.x = -lim; player.vx = 0; } else if (player.x > lim) { player.x = lim; player.vx = 0; }
   if (player.z < -lim) { player.z = -lim; player.vz = 0; } else if (player.z > lim) { player.z = lim; player.vz = 0; }
   const c = HS_MAPS[hsMap].ceil;
