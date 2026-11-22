@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v49</title>
+<title>MinecraftZ v50</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -4247,7 +4247,14 @@ function getTouchRay(screenX, screenY) {
   let dy = fy + ry * nx * tan * aspect + uy * ny * tan;
   let dz = fz + rz * nx * tan * aspect + uz * ny * tan;
   const len = Math.hypot(dx, dy, dz) || 1;
-  return { ox, oy, oz, dir: { x: dx / len, y: dy / len, z: dz / len } };
+  dx /= len; dy /= len; dz /= len;
+  if (settings.view !== 'first') {
+    // The camera sits behind the player, so measure reach from the player instead of the camera:
+    // start the ray where the line of sight passes closest to the player's eye.
+    const tEye = (player.x - ox) * dx + (eyeY - oy) * dy + (player.z - oz) * dz;
+    if (tEye > 0) { ox += dx * tEye; oy += dy * tEye; oz += dz * tEye; }
+  }
+  return { ox, oy, oz, dir: { x: dx, y: dy, z: dz } };
 }
 
 // Ray vs AABB (slab test). Returns entry distance or -1.
@@ -4361,7 +4368,7 @@ function lightNetherPortalFromFrame(bx, by, bz) {
   return false;
 }
 
-function handleUseOrPlace(viaKey, targetOverride = null) {
+function handleUseOrPlace(viaKey, targetOverride) {
   if (deadTimer > 0) return;
   if (viaKey || touchMode) {
     const ld = getLookDir(), lh = Math.hypot(ld.x, ld.z) || 1;
@@ -4391,7 +4398,7 @@ function handleUseOrPlace(viaKey, targetOverride = null) {
     return;
   }
 
-  const target = arguments.length > 1 ? targetOverride : raycastTarget();
+  const target = targetOverride !== undefined ? targetOverride : raycastTarget();
 
   // Coupler: click the front cart, then the cart behind it (same cart twice = uncouple)
   if (heldId() === 86) {
@@ -4615,9 +4622,9 @@ function removeCart(cart) {
 }
 
 // Creative: instant. Used by click / Q in Creative.
-function handleBreak(targetOverride = null) {
+function handleBreak(targetOverride) {
   if (deadTimer > 0) return;
-  const target = arguments.length > 1 ? targetOverride : raycastTarget();
+  const target = targetOverride !== undefined ? targetOverride : raycastTarget();
   if (!target) return;
   if (target.type === 'cart') { removeCart(target.cart); return; }
   if (target.type === 'mob') { attackMob(target.mob); return; }
