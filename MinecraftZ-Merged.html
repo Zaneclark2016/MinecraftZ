@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.6.0</title>
+<title>MinecraftZ v5.6.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -1489,8 +1489,9 @@ let hsMap = 0, hsVar = 0, hsRandom = false;
 const hsInside = (wx, wz) => wx >= -HS_HALF && wx < HS_HALF && wz >= -HS_HALF && wz < HS_HALF;
 function hsGround(wx, wz) {
   if (hsMap === 1) {
-    if (Math.hypot(wx, wz) < 6) return 18;
-    return Math.floor(17 + smoothNoise(wx * 0.05 + 40, wz * 0.05 - 17) * 7 + smoothNoise(wx * 0.15, wz * 0.15) * 2);
+    const nz = 17 + smoothNoise(wx * 0.05 + 40, wz * 0.05 - 17) * 7 + smoothNoise(wx * 0.15, wz * 0.15) * 2;
+    const k = Math.min(1, Math.max(0, (Math.hypot(wx, wz) - 5) / 12));
+    return Math.floor(18 + (nz - 18) * k * k * (3 - 2 * k));
   }
   return hsMap === 2 ? 18 : 16;
 }
