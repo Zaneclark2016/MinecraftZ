@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.5.1</title>
+<title>MinecraftZ v5.6.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -3521,8 +3521,7 @@ HS.specUntil = 0; HS.prevPhase = 'lobby'; HS.prevSeeker = false;
 function hsWatch() {
   const now = performance.now(), seeker = hsAmSeeker();
   if (settings.mode === 'hideandseek' && HS.phase === 'seek') {
-    if (HS.prevPhase === 'hide' && !seeker) HS.specUntil = now + HS_SPEC_MS;
-    else if (HS.prevPhase === 'seek' && !HS.prevSeeker && seeker) HS.specUntil = now + HS_SPEC_MS;
+    if (HS.prevPhase === 'seek' && !HS.prevSeeker && seeker) HS.specUntil = Infinity; // found: frozen until the round ends
   } else HS.specUntil = 0;
   HS.prevPhase = HS.phase; HS.prevSeeker = seeker;
 }
@@ -3560,7 +3559,7 @@ function hsSet(m) {
   HS.names = {}; HS.seekers.forEach((id, k) => { HS.names[id] = String((m.n || [])[k] || 'Player').slice(0, 16); });
   HS.endAt = performance.now() + (Number(m.left) || 0) * 1000;
   hsNotice(m.note);
-  if (prevPhase === 'seek' && HS.phase === 'seek' && !wasSeeker && hsAmSeeker()) mpToast('You were found! You are a seeker now.');
+  if (prevPhase === 'seek' && HS.phase === 'seek' && !wasSeeker && hsAmSeeker()) mpToast('You were found! You are frozen and spectating until the round ends.');
   hsUi();
 }
 function hsNotice(note) {
@@ -3635,7 +3634,7 @@ function hsUi() {
     const hidersLeft = hsAllIds().filter(id => !HS.seekers.includes(id)).length;
     t = (hsAmSeeker() ? 'You are a seeker. Tap or click a hider to tag them!' : 'Seekers: ' + hsSeekerNames()) + '  ' + hidersLeft + ' hider' + (hidersLeft === 1 ? '' : 's') + ' left  ' + hsClock(hsLeft());
   }
-  if (HS.phase === 'seek' && performance.now() < HS.specUntil) t = 'Frozen! Watching ' + hsSeekerNames() + ' for ' + Math.ceil((HS.specUntil - performance.now()) / 1000) + 's';
+  if (HS.phase === 'seek' && performance.now() < HS.specUntil) t = 'You were found! Watching the seeker until the round ends  ' + hsClock(hsLeft());
   if (bar.textContent !== t) bar.textContent = t;
   bar.style.display = screen === null || screen === 'chat' ? 'block' : 'none';
   if (HS.phase === 'hide' && hsAmSeeker()) { blind.style.display = 'flex'; const b = 'You are the seeker!\nCounting... ' + hsLeft(); if (blind.textContent !== b) blind.textContent = b; blind.style.whiteSpace = 'pre-line'; }
