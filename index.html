@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.5.0</title>
+<title>MinecraftZ v5.5.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -3638,7 +3638,7 @@ function hsUi() {
   if (HS.phase === 'seek' && performance.now() < HS.specUntil) t = 'Frozen! Watching ' + hsSeekerNames() + ' for ' + Math.ceil((HS.specUntil - performance.now()) / 1000) + 's';
   if (bar.textContent !== t) bar.textContent = t;
   bar.style.display = screen === null || screen === 'chat' ? 'block' : 'none';
-  if (hsFrozen()) { blind.style.display = 'flex'; const b = 'You are the seeker!\nCounting... ' + hsLeft(); if (blind.textContent !== b) blind.textContent = b; blind.style.whiteSpace = 'pre-line'; }
+  if (HS.phase === 'hide' && hsAmSeeker()) { blind.style.display = 'flex'; const b = 'You are the seeker!\nCounting... ' + hsLeft(); if (blind.textContent !== b) blind.textContent = b; blind.style.whiteSpace = 'pre-line'; }
   else blind.style.display = 'none';
   btn.style.display = MP.role === 'host' && screen === null ? 'block' : 'none';
   const bt = HS.phase === 'lobby' ? 'Start round (H)' : 'End round (H)';
