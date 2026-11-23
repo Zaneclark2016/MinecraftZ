@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.8.1</title>
+<title>MinecraftZ v5.8.2</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -3366,6 +3366,7 @@ function chatBarUi() {
   bar.style.display = avail && (active || screen === null) ? 'flex' : 'none';
   bar.classList.toggle('idle', !active);
   inp.readOnly = !active;
+  if (!active && document.activeElement === inp) inp.blur();
   const ph = active ? 'Type a message, Enter to send' : 'Press T to chat';
   if (inp.placeholder !== ph) inp.placeholder = ph;
 }
@@ -3414,8 +3415,8 @@ function cloudChat(pid, v) {
   if (v.t < chatJoinAt - 2000 || Date.now() - v.t > 60000) return;
   chatPost(String(v.n || 'Player').slice(0, 16), String(v.m).slice(0, 120));
 }
-$('chatIn').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') chatSend(); else if (e.key === 'Escape') closeScreen(); });
-$('chatIn').addEventListener('keyup', (e) => e.stopPropagation());
+$('chatIn').addEventListener('keydown', (e) => { if ($('chatIn').readOnly) return; e.stopPropagation(); if (e.key === 'Enter') chatSend(); else if (e.key === 'Escape') closeScreen(); });
+$('chatIn').addEventListener('keyup', (e) => { if (!$('chatIn').readOnly) e.stopPropagation(); });
 $('chatSend').onclick = chatSend;
 $('chatBtn').addEventListener('click', (e) => { e.stopPropagation(); openChat(); });
 $('chatBtn').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); openChat(); }, { passive: false });
