@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.8.3</title>
+<title>MinecraftZ v5.8.4</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -3405,7 +3405,9 @@ function chatSend() {
     chatPost(myName(), msg);
     cloudReq(CLOUD_API, '/api/worlds/' + currentWorld.cid + '/signs', 'POST', { signs: [{ coords: '~c_' + settings.pid, value: JSON.stringify({ n: myName(), m: msg, t: Date.now() }) }] }, currentWorld.ownerToken || currentWorld.cloudToken).catch(() => mpToast('Message could not be sent'));
   } else { mpToast("Nobody else is connected, so nobody would see that."); }
-  closeScreen();
+  // stay open for the next message: clear the box and keep typing until the player clicks elsewhere
+  $('chatIn').value = '';
+  $('chatIn').focus();
 }
 const cloudChatSeen = new Map();
 function cloudChat(pid, v) {
@@ -3418,6 +3420,8 @@ function cloudChat(pid, v) {
 $('chatIn').addEventListener('keydown', (e) => { if ($('chatIn').readOnly) return; e.stopPropagation(); if (e.key === 'Enter') chatSend(); else if (e.key === 'Escape') closeScreen(); });
 $('chatIn').addEventListener('keyup', (e) => { if (!$('chatIn').readOnly) e.stopPropagation(); });
 $('chatSend').onclick = chatSend;
+$('chatSend').addEventListener('mousedown', (e) => e.preventDefault());
+document.addEventListener('pointerdown', (e) => { if (screen === 'chat' && !$('chatBar').contains(e.target)) closeScreen(); }, true);
 $('chatBtn').addEventListener('click', (e) => { e.stopPropagation(); openChat(); });
 $('chatBtn').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); openChat(); }, { passive: false });
 function mpToast(msg) {
