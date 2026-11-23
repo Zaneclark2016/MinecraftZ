@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.7.0</title>
+<title>MinecraftZ v5.8.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -214,7 +214,7 @@
     <div class="hint">The same seed gives the same terrain, but every world is its own separate world, even with the same seed, so nobody can land in yours by accident. To play together, use the Friends list or share your world's join code.</div>
     <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="hideandseek">Hide &amp; Seek</option><option value="survival">Survival</option><option value="brawl">Brawl (arena waves)</option></select></div>
     <div class="hint" id="cBrawlHint" style="display:none">Brawl: fight waves of mobs in a closed 20x20 arena. Earn points for every kill and spend them in the shop between waves. The other world options are ignored.</div>
-    <div class="row" id="cHsRow" style="display:none"><span>Map</span><select id="cHsMap"><option value="4">Random each round</option><option value="1">Whispering Woods (80x80)</option><option value="2">Sandstone Town (80x80)</option><option value="3">Stone Maze (80x80)</option><option value="0">Open world (no limits)</option></select></div>
+    <div class="row" id="cHsRow" style="display:none"><span>Map</span><select id="cHsMap"><option value="4">Random each round</option><option value="1">Whispering Woods (80x80)</option><option value="2">Sandstone Town (80x80)</option><option value="3">Stone Maze (80x80)</option><option value="5">Frozen Tundra (80x80)</option><option value="6">Brick Castle (80x80)</option><option value="7">Crystal Cavern (80x80)</option><option value="0">Open world (no limits)</option></select></div>
     <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. Pick a map: each is a closed 80x80 arena with a boundary wall and a height limit. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides. Then the seeker has 5 minutes to tag hiders by clicking or tapping near them, and every tagged hider becomes another seeker.</div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
     <div class="row"><span>Caves &amp; Ores</span><input type="checkbox" id="cCaves" checked></div>
@@ -1484,7 +1484,13 @@ const HS_HALF = 40;
 const HS_MAPS = [null,
   { name: 'Whispering Woods', ceil: 44, spawn: [0.5, 0.5] },
   { name: 'Sandstone Town',   ceil: 36, spawn: [0.5, 0.5] },
-  { name: 'Stone Maze',       ceil: 20, spawn: [2.5, 2.5] }];
+  { name: 'Stone Maze',       ceil: 20, spawn: [2.5, 2.5] },
+  null,   // 4 = "random each round" in the world menu, never a real map
+  { name: 'Frozen Tundra',    ceil: 40, spawn: [0.5, 0.5] },
+  { name: 'Brick Castle',     ceil: 40, spawn: [0.5, 0.5] },
+  { name: 'Crystal Cavern',   ceil: 29, spawn: [0.5, 0.5] }];
+const HS_IDS = [1, 2, 3, 5, 6, 7];
+const hsPickMap = (not) => { let n; do { n = HS_IDS[Math.floor(Math.random() * HS_IDS.length)]; } while (n === not); return n; };
 let hsMap = 0, hsVar = 0, hsRandom = false;
 const hsInside = (wx, wz) => wx >= -HS_HALF && wx < HS_HALF && wz >= -HS_HALF && wz < HS_HALF;
 function hsGround(wx, wz) {
@@ -1493,7 +1499,42 @@ function hsGround(wx, wz) {
     const k = Math.min(1, Math.max(0, (Math.hypot(wx, wz) - 5) / 12));
     return Math.floor(18 + (nz - 18) * k * k * (3 - 2 * k));
   }
+  if (hsMap === 5) {
+    const nz = 17 + smoothNoise(wx * 0.06 - 23, wz * 0.06 + 31) * 6 + smoothNoise(wx * 0.17 + 5, wz * 0.17 - 9) * 2;
+    const k = Math.min(1, Math.max(0, (Math.hypot(wx, wz) - 5) / 12));
+    return Math.floor(18 + (nz - 18) * k * k * (3 - 2 * k));
+  }
+  if (hsMap === 7) {
+    const k = Math.min(1, Math.max(0, (Math.hypot(wx, wz) - 5) / 10));
+    return 16 + Math.floor(smoothNoise(wx * 0.09 + 5, wz * 0.09 + 11) * 4 * k);
+  }
+  if (hsMap === 6) return 16;
   return hsMap === 2 ? 18 : 16;
+}
+// Brick Castle: curtain wall with four gates and corner towers around the courtyard, plus a keep with rooms to hide in
+function hsCastleBlock(wx, y, wz, h) {
+  const ax = Math.abs(wx), az = Math.abs(wz), d = Math.max(ax, az), t = y - h;
+  if (d >= 25 && d <= 26) {
+    const gate = (d === ax ? az : ax) <= 2 && t <= 4;
+    if (ax >= 23 && az >= 23) return t <= 13 ? 49 : 0;
+    if (gate) return 0;
+    if (t <= 9) return 49;
+    return t === 10 && (wx + wz) % 2 === 0 ? 49 : 0;
+  }
+  if (wx >= 8 && wx <= 20 && wz >= 8 && wz <= 20) {
+    if (t === 0) return 5;
+    if (t === 9) return 5;
+    const edge = wx === 8 || wx === 20 || wz === 8 || wz === 20;
+    if (edge) {
+      if (wx === 8 && wz >= 13 && wz <= 15 && t <= 3) return 0;
+      if (t === 3 && (wx + wz) % 4 === 0) return 3;
+      return t <= 8 ? 49 : 0;
+    }
+    if (t >= 1 && t <= 3 && (wx === 11 || wx === 14 || wx === 17) && (wz === 11 || wz === 14 || wz === 17)) return 54;
+    if (t >= 1 && t <= 2 && wz === 19 && wx >= 10 && wx <= 18 && wx % 2 === 0) return 54;
+    return 0;
+  }
+  return 0;
 }
 let hsMazeCache = null;
 function hsMaze() {
@@ -1585,8 +1626,10 @@ function hsMapChunk(cx, cz) {
     const h = hsGround(wx, wz);
     for (let y = 0; y <= h; y++) {
       let id = 6;
-      if (y === h) id = hsMap === 1 ? 1 : hsMap === 2 ? ((((wx + HS_HALF) % 20 < 4) || ((wz + HS_HALF) % 20 < 4)) ? 48 : 13) : 50;
-      else if (y >= h - 3) id = hsMap === 1 ? 2 : hsMap === 2 ? 59 : 6;
+      if (y === h) id = hsMap === 1 ? 1 : hsMap === 2 ? ((((wx + HS_HALF) % 20 < 4) || ((wz + HS_HALF) % 20 < 4)) ? 48 : 13)
+        : hsMap === 5 ? 52 : hsMap === 6 ? (Math.max(Math.abs(wx), Math.abs(wz)) < 25 && (Math.abs(wx) <= 1 || Math.abs(wz) <= 1) ? 50 : 1)
+        : hsMap === 7 ? (hash2(wx * 2.1 + 3, wz * 1.7 - 8) < 0.2 ? 50 : 6) : 50;
+      else if (y >= h - 3) id = hsMap === 1 || hsMap === 5 || hsMap === 6 ? 2 : hsMap === 2 ? 59 : 6;
       if (y === 0) id = 6;
       data[at(y)] = id;
     }
@@ -1607,6 +1650,42 @@ function hsMapChunk(cx, cz) {
       else if (q > 0.985 && data[at(h + 1)] === 0) { data[at(h + 1)] = 48; if (q > 0.993) data[at(h + 2)] = 48; }
     } else if (hsMap === 2) {
       for (let y = h; y <= h + 9 && y < CHUNK_HEIGHT; y++) { const b = hsTownBlock(wx, y, wz, h); if (b) data[at(y)] = b; }
+    } else if (hsMap === 5) {
+      if (Math.hypot(wx, wz) >= 5) {
+        const p = hash2(wx * 1.7 + 31, wz * 2.3 + 7);
+        if (p < 0.012) { const hh = 3 + Math.floor(p * 500) % 6; for (let y = h + 1; y <= h + hh; y++) data[at(y)] = 60; }
+        else if (p > 0.992) for (let y = h + 1; y <= h + 4 + Math.floor((p - 0.992) * 500) % 2; y++) data[at(y)] = 4;
+        else {
+          const dn = smoothNoise(wx * 0.2 + 9, wz * 0.2 - 3);
+          if (dn > 0.7) for (let y = h + 1; y <= h + (dn > 0.8 ? 3 : 2); y++) data[at(y)] = 52;
+        }
+      }
+    } else if (hsMap === 6) {
+      for (let y = h; y <= h + 14 && y < CHUNK_HEIGHT; y++) { const b = hsCastleBlock(wx, y, wz, h); if (b) data[at(y)] = b; }
+      if (Math.max(Math.abs(wx), Math.abs(wz)) >= 28) {
+        const trunk = (tx, tz) => Math.max(Math.abs(tx), Math.abs(tz)) >= 28 && hash2(tx * 1.7 + 11, tz * 2.3 - 5) < 0.03;
+        if (trunk(wx, wz)) for (let y = h + 1; y <= h + 4; y++) data[at(y)] = 4;
+        for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+          const tx = wx + dx, tz = wz + dz;
+          if (!hsInside(tx, tz) || !trunk(tx, tz)) continue;
+          for (let y = h + 3; y <= h + 5; y++) if (Math.abs(dx) + Math.abs(dz) + Math.abs(y - (h + 4)) <= 3 && data[at(y)] === 0) data[at(y)] = 10;
+        }
+      }
+    } else if (hsMap === 7) {
+      for (let y = 30; y <= 33 && y < CHUNK_HEIGHT; y++) data[at(y)] = 6;
+      if (Math.hypot(wx, wz) >= 6) {
+        const ci = Math.floor((wx + HS_HALF) / 9), cj = Math.floor((wz + HS_HALF) / 9);
+        let pil = false;
+        for (let a = -1; a <= 1 && !pil; a++) for (let b = -1; b <= 1; b++) {
+          const i = ci + a, j = cj + b, r = (u, v) => hash2(i * 13.1 + u, j * 7.7 + v);
+          if (r(1, 2) < 0.3) continue;
+          const px = i * 9 - HS_HALF + 1 + Math.floor(r(3, 4) * 7), pz = j * 9 - HS_HALF + 1 + Math.floor(r(5, 6) * 7);
+          if (Math.hypot(px, pz) < 8) continue;
+          if (Math.hypot(wx - px, wz - pz) <= (r(7, 8) > 0.5 ? 2.2 : 1.2)) { pil = true; break; }
+        }
+        if (pil) for (let y = h + 1; y <= 31; y++) data[at(y)] = hash2(wx * 3.3 + y, wz * 1.9) < 0.25 ? 48 : 6;
+        else { const q = hash2(wx * 2.9 + 77, wz * 1.1 - 40); if (q > 0.97) for (let y = h + 1; y <= h + 1 + (q > 0.985 ? 2 : 1); y++) data[at(y)] = 48; }
+      }
     } else if (hsMap === 3) {
       if (hsMazeWall(wx, wz)) {
         const k = hash2(wx * 1.1 + 3, wz * 2.7 + 5);
@@ -3007,7 +3086,7 @@ function startWorld(entry, pre) {
   cavesOn = entry.caves === true;
   brawlWorld = entry.brawl === true;
   hsVar = 0; hsRandom = entry.mode === 'hideandseek' && (entry.hsMap | 0) === 4;
-  hsMap = entry.mode === 'hideandseek' ? (hsRandom ? 1 + Math.floor(Math.random() * 3) : ((entry.hsMap | 0) >= 0 && (entry.hsMap | 0) <= 3 ? entry.hsMap | 0 : 0)) : 0;
+  hsMap = entry.mode === 'hideandseek' ? (hsRandom ? hsPickMap(0) : ((entry.hsMap | 0) === 0 || HS_MAPS[entry.hsMap | 0] ? entry.hsMap | 0 : 0)) : 0;
   settings.dayLen = entry.dayLen || 6;
   netDayLen = null;
   worldSeed = entry.seed;
@@ -3534,7 +3613,7 @@ function hsMsg(note) { return { t: 'hs', mp: hsMap, v: hsVar, p: HS.phase, s: HS
 function hsBroadcast(note) { const m = hsMsg(note); for (const c of MP.conns.values()) { try { c.send(m); } catch (e) {} } }
 function hsLoadMap(n, v) {
   n = n | 0; v = v | 0;
-  if (!(n >= 1 && n <= 3) || (n === hsMap && v === hsVar)) return;
+  if (!HS_MAPS[n] || (n === hsMap && v === hsVar)) return;
   hsMap = n; hsVar = v; hsMazeCache = null;
   clearChunks();
   mobs.length = 0; drops.length = 0; minecarts.length = 0;
@@ -3570,7 +3649,7 @@ function hsStart() {
   const all = hsAllIds();
   if (all.length < 2) { mpToast('Need at least 2 players for a round.'); return; }
   const pick = all[Math.floor(Math.random() * all.length)];
-  if (hsRandom) { let n; do { n = 1 + Math.floor(Math.random() * 3); } while (n === hsMap); hsLoadMap(n, Math.floor(Math.random() * 1000)); }
+  if (hsRandom) { const n = hsPickMap(hsMap); hsLoadMap(n, Math.floor(Math.random() * 1000)); }
   else if (hsMap) { const sp = HS_MAPS[hsMap].spawn; player.x = sp[0]; player.z = sp[1]; player.y = terrainHeight(Math.floor(sp[0]), Math.floor(sp[1])) + 3; player.vx = player.vy = player.vz = 0; }
   HS.phase = 'hide'; HS.seekers = [pick]; HS.names = { [pick]: hsNameOf(pick) }; HS.endAt = performance.now() + HS.hideSecs * 1000;
   hsNotice(); hsBroadcast(); hsUi();
@@ -3738,7 +3817,7 @@ function mpFinishJoin() {
   settings.mobs = wl.mobs !== false;
   cavesOn = wl.caves === true;
   hsVar = Number.isFinite(wl.hv) ? wl.hv | 0 : 0; hsRandom = false;
-  hsMap = settings.mode === 'hideandseek' && Number(wl.hs) >= 1 && Number(wl.hs) <= 3 ? Number(wl.hs) | 0 : 0;
+  hsMap = settings.mode === 'hideandseek' && HS_MAPS[Number(wl.hs) | 0] ? Number(wl.hs) | 0 : 0;
   if (Number.isFinite(wl.seed)) worldSeed = wl.seed;
   if (!isCloud()) {
     edits.clear(); overworldEdits.clear(); netherEdits.clear();
