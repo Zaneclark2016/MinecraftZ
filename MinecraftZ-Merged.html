@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.8.0</title>
+<title>MinecraftZ v5.8.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -167,8 +167,13 @@
   #chatLog { position: fixed; left: 12px; bottom: 150px; width: min(60vw, 420px); display: flex; flex-direction: column; gap: 2px; pointer-events: none; z-index: 6; }
   #chatLog div { background: rgba(0,0,0,0.5); color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 13px; word-break: break-word; }
   #chatLog div b { color: #ffd966; font-weight: 600; }
-  #chatBar { pointer-events: auto; position: fixed; left: 12px; bottom: 112px; width: min(80vw, 460px); display: none; gap: 6px; z-index: 9; }
-  #chatBar input { flex: 1; padding: 7px 10px; border-radius: 6px; border: 2px solid #777; background: rgba(0,0,0,0.8); color: #fff; font-size: 14px; }
+  #chatBar { pointer-events: auto; position: fixed; left: 12px; bottom: 112px; width: min(70vw, 320px); display: none; gap: 6px; z-index: 9; }
+  #chatBar input { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 6px; border: 2px solid #777; background: rgba(0,0,0,0.8); color: #fff; font-size: 13px; }
+  #chatBar #chatSend { padding: 4px 10px; font-size: 13px; }
+  #chatBar.idle { width: min(50vw, 200px); opacity: 0.7; cursor: pointer; }
+  #chatBar.idle input { border-color: #444; background: rgba(0,0,0,0.45); cursor: pointer; }
+  #chatBar.idle #chatSend { display: none; }
+  body.touch #chatBar.idle { display: none !important; }
   #chatBtn { display: none; pointer-events: auto; cursor: pointer; position: fixed; right: 12px; top: 56px; z-index: 7; padding: 6px 12px; border-radius: 8px; background: rgba(0,0,0,0.55); color: #fff; font-size: 13px; border: 1px solid #888; }
   body.touch.ingame #chatBtn { display: block; }
   #toasts { position: fixed; left: 12px; bottom: 100px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; z-index: 6; }
@@ -2594,7 +2599,7 @@ function refreshUI() {
   $('friends').style.display = screen === 'friends' ? 'flex' : 'none';
   $('shop').style.display = screen === 'shop' ? 'flex' : 'none';
   $('signEditor').style.display = screen === 'sign' ? 'flex' : 'none';
-  $('chatBar').style.display = screen === 'chat' ? 'flex' : 'none';
+  chatBarUi();
   $('joinPanel').style.display = (!inGame && screen === 'joincode') ? 'flex' : 'none';
   $('acctPanel').style.display = (!inGame && screen === 'account') ? 'flex' : 'none';
   invScreen.style.display = screen === 'inv' ? 'flex' : 'none';
@@ -3354,6 +3359,18 @@ MP.wasInRoom = false;   // true once this session has been inside the shared wor
 const num = (v) => (Number.isFinite(+v) ? +v : 0);
 const myName = () => (settings.name || 'Player').slice(0, 16);
 
+function chatBarUi() {
+  const bar = $('chatBar'), inp = $('chatIn'), active = screen === 'chat';
+  let avail = false;
+  try { avail = inGame && !brawlWorld && (isCloud() || MP.role !== 'none'); } catch (e) {}
+  bar.style.display = avail && (active || screen === null) ? 'flex' : 'none';
+  bar.classList.toggle('idle', !active);
+  inp.readOnly = !active;
+  const ph = active ? 'Type a message, Enter to send' : 'Press T to chat';
+  if (inp.placeholder !== ph) inp.placeholder = ph;
+}
+setInterval(() => { try { chatBarUi(); } catch (e) {} }, 1000);
+$('chatBar').addEventListener('click', () => { if (screen === null) openChat(); });
 function chatPost(name, text) {
   const log = document.getElementById('chatLog');
   const d = document.createElement('div');
