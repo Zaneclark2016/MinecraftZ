@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.3.2</title>
+<title>MinecraftZ v5.4.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -214,7 +214,7 @@
     <div class="hint">The same seed gives the same terrain, but every world is its own separate world, even with the same seed, so nobody can land in yours by accident. To play together, use the Friends list or share your world's join code.</div>
     <div class="row"><span>Mode</span><select id="cMode"><option value="creative">Creative</option><option value="hideandseek">Hide &amp; Seek</option><option value="survival">Survival</option><option value="brawl">Brawl (arena waves)</option></select></div>
     <div class="hint" id="cBrawlHint" style="display:none">Brawl: fight waves of mobs in a closed 20x20 arena. Earn points for every kill and spend them in the shop between waves. The other world options are ignored.</div>
-    <div class="row" id="cHsRow" style="display:none"><span>Map</span><select id="cHsMap"><option value="1">Whispering Woods (80x80)</option><option value="2">Sandstone Town (80x80)</option><option value="3">Stone Maze (80x80)</option><option value="0">Open world (no limits)</option></select></div>
+    <div class="row" id="cHsRow" style="display:none"><span>Map</span><select id="cHsMap"><option value="4">Random each round</option><option value="1">Whispering Woods (80x80)</option><option value="2">Sandstone Town (80x80)</option><option value="3">Stone Maze (80x80)</option><option value="0">Open world (no limits)</option></select></div>
     <div class="hint" id="cHideHint" style="display:none">Hide &amp; Seek uses Creative rules with hidden nametags. Pick a map: each is a closed 80x80 arena with a boundary wall and a height limit. In multiplayer the host starts a round (button or H): a random player becomes the seeker and is frozen and blind for 30 seconds while everyone else hides. Then the seeker has 5 minutes to tag hiders by clicking or tapping near them, and every tagged hider becomes another seeker.</div>
     <div class="row"><span>Difficulty</span><select id="cDiff"><option value="peaceful">Peaceful</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
     <div class="row"><span>Caves &amp; Ores</span><input type="checkbox" id="cCaves" checked></div>
@@ -1331,7 +1331,7 @@ const torches = new Map();   // "x,y,z" -> [x,y,z] for every placed torch, kept 
 const buildQueue = [];
 
 function hash2(x, z) {
-  let n = Math.sin(x * 127.1 + z * 311.7 + worldSeed * 0.13) * 43758.5453123;
+  let n = Math.sin(x * 127.1 + z * 311.7 + worldSeed * 0.13 + hsVar * 0.071) * 43758.5453123;
   return n - Math.floor(n);
 }
 function smoothNoise(x, z) {
@@ -1485,7 +1485,7 @@ const HS_MAPS = [null,
   { name: 'Whispering Woods', ceil: 44, spawn: [0.5, 0.5] },
   { name: 'Sandstone Town',   ceil: 36, spawn: [0.5, 0.5] },
   { name: 'Stone Maze',       ceil: 20, spawn: [2.5, 2.5] }];
-let hsMap = 0;
+let hsMap = 0, hsVar = 0, hsRandom = false;
 const hsInside = (wx, wz) => wx >= -HS_HALF && wx < HS_HALF && wz >= -HS_HALF && wz < HS_HALF;
 function hsGround(wx, wz) {
   if (hsMap === 1) {
@@ -1496,8 +1496,8 @@ function hsGround(wx, wz) {
 }
 let hsMazeCache = null;
 function hsMaze() {
-  if (hsMazeCache && hsMazeCache.seed === worldSeed) return hsMazeCache;
-  let a = (worldSeed ^ 0x9e3779b9) >>> 0;
+  if (hsMazeCache && hsMazeCache.seed === worldSeed + hsVar * 7919) return hsMazeCache;
+  let a = ((worldSeed + hsVar * 7919) ^ 0x9e3779b9) >>> 0;
   const rnd = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const N = 12;
   const openW = [], openN = [], seen = [];
@@ -1520,7 +1520,7 @@ function hsMaze() {
     if (i > 0 && rnd() < 0.09) openW[i][j] = 1;
     if (j > 0 && rnd() < 0.09) openN[i][j] = 1;
   }
-  return (hsMazeCache = { seed: worldSeed, openW, openN });
+  return (hsMazeCache = { seed: worldSeed + hsVar * 7919, openW, openN });
 }
 function hsMazeWall(wx, wz) {
   const mx = wx + HS_HALF, mz = wz + HS_HALF;
@@ -3005,7 +3005,8 @@ function startWorld(entry, pre) {
   settings.mobs = entry.mobs !== false;
   cavesOn = entry.caves === true;
   brawlWorld = entry.brawl === true;
-  hsMap = entry.mode === 'hideandseek' ? ((entry.hsMap | 0) >= 0 && (entry.hsMap | 0) <= 3 ? entry.hsMap | 0 : 0) : 0;
+  hsVar = 0; hsRandom = entry.mode === 'hideandseek' && (entry.hsMap | 0) === 4;
+  hsMap = entry.mode === 'hideandseek' ? (hsRandom ? 1 + Math.floor(Math.random() * 3) : ((entry.hsMap | 0) >= 0 && (entry.hsMap | 0) <= 3 ? entry.hsMap | 0 : 0)) : 0;
   settings.dayLen = entry.dayLen || 6;
   netDayLen = null;
   worldSeed = entry.seed;
@@ -3054,7 +3055,7 @@ function quitToMenu() {
   cloudStop();
   $('cloudDot').textContent = '';
   mpStop();
-  inGame = false; screen = null; currentWorld = null; guestSession = false; brawlWorld = false; hsMap = 0;
+  inGame = false; screen = null; currentWorld = null; guestSession = false; brawlWorld = false; hsMap = 0; hsVar = 0; hsRandom = false;
   $('brawlHud').style.display = 'none'; $('brawlBanner').style.display = 'none';
   mobs.length = 0; drops.length = 0; minecarts.length = 0; ridingCart = null;
   deadTimer = 0;
@@ -3469,7 +3470,7 @@ function mpHostMsg(conn, m) {
     MP.conns.set(conn.peer, conn);
     MP.players.set(conn.peer, { id: conn.peer, name, x: player.x, y: player.y, z: player.z, yaw: 0, pitch: 0, dim: netherMode ? 1 : 0 });
     conn.send({ t: 'welcome', seed: worldSeed, seedText: currentWorld ? currentWorld.seedText : String(worldSeed),
-               mode: settings.mode, difficulty: settings.difficulty, mobs: settings.mobs, caves: cavesOn, hs: hsMap, wt: worldTime, day: dayCount, dl: settings.dayLen,
+               mode: settings.mode, difficulty: settings.difficulty, mobs: settings.mobs, caves: cavesOn, hs: hsMap, hv: hsVar, wt: worldTime, day: dayCount, dl: settings.dayLen,
                host: { name: myName(), x: player.x, y: player.y, z: player.z, dim: netherMode ? 1 : 0 }, netherMode: !!netherMode });
     if (!isCloud()) {
       for (const [k, mm] of overworldEdits) {
@@ -3520,9 +3521,23 @@ const hsClock = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'
 const hsSeekerNames = () => HS.seekers.map(id => HS.names[id] || 'Player').join(', ');
 function hsAllIds() { const a = [MP.myId]; for (const q of MP.players.values()) a.push(q.id); return a; }
 function hsNameOf(id) { return id === MP.myId ? myName() : ((MP.players.get(id) || {}).name || 'Player'); }
-function hsMsg(note) { return { t: 'hs', p: HS.phase, s: HS.seekers.slice(), n: HS.seekers.map(id => HS.names[id] || 'Player'), left: Math.max(0, (HS.endAt - performance.now()) / 1000), note: note || '' }; }
+function hsMsg(note) { return { t: 'hs', mp: hsMap, v: hsVar, p: HS.phase, s: HS.seekers.slice(), n: HS.seekers.map(id => HS.names[id] || 'Player'), left: Math.max(0, (HS.endAt - performance.now()) / 1000), note: note || '' }; }
 function hsBroadcast(note) { const m = hsMsg(note); for (const c of MP.conns.values()) { try { c.send(m); } catch (e) {} } }
+function hsLoadMap(n, v) {
+  n = n | 0; v = v | 0;
+  if (!(n >= 1 && n <= 3) || (n === hsMap && v === hsVar)) return;
+  hsMap = n; hsVar = v; hsMazeCache = null;
+  clearChunks();
+  mobs.length = 0; drops.length = 0; minecarts.length = 0;
+  edits.clear();
+  const sp = HS_MAPS[n].spawn;
+  player.x = sp[0] + (Math.random() - 0.5) * 2; player.z = sp[1] + (Math.random() - 0.5) * 2;
+  player.y = terrainHeight(Math.floor(player.x), Math.floor(player.z)) + 3;
+  player.vx = player.vy = player.vz = 0;
+  pregenAround(player.x, player.z);
+}
 function hsSet(m) {
+  if (MP.role !== 'host' && m.mp) hsLoadMap(m.mp, m.v);
   const prevPhase = HS.phase, wasSeeker = hsAmSeeker();
   HS.phase = m.p === 'hide' || m.p === 'seek' ? m.p : 'lobby';
   HS.seekers = HS.phase === 'lobby' || !Array.isArray(m.s) ? [] : m.s.map(String).slice(0, 8);
@@ -3546,6 +3561,8 @@ function hsStart() {
   const all = hsAllIds();
   if (all.length < 2) { mpToast('Need at least 2 players for a round.'); return; }
   const pick = all[Math.floor(Math.random() * all.length)];
+  if (hsRandom) { let n; do { n = 1 + Math.floor(Math.random() * 3); } while (n === hsMap); hsLoadMap(n, Math.floor(Math.random() * 1000)); }
+  else if (hsMap) { const sp = HS_MAPS[hsMap].spawn; player.x = sp[0]; player.z = sp[1]; player.y = terrainHeight(Math.floor(sp[0]), Math.floor(sp[1])) + 3; player.vx = player.vy = player.vz = 0; }
   HS.phase = 'hide'; HS.seekers = [pick]; HS.names = { [pick]: hsNameOf(pick) }; HS.endAt = performance.now() + HS.hideSecs * 1000;
   hsNotice(); hsBroadcast(); hsUi();
 }
@@ -3709,6 +3726,7 @@ function mpFinishJoin() {
   settings.difficulty = ['peaceful', 'normal', 'hard'].includes(wl.difficulty) ? wl.difficulty : 'normal';
   settings.mobs = wl.mobs !== false;
   cavesOn = wl.caves === true;
+  hsVar = Number.isFinite(wl.hv) ? wl.hv | 0 : 0; hsRandom = false;
   hsMap = settings.mode === 'hideandseek' && Number(wl.hs) >= 1 && Number(wl.hs) <= 3 ? Number(wl.hs) | 0 : 0;
   if (Number.isFinite(wl.seed)) worldSeed = wl.seed;
   if (!isCloud()) {
@@ -3743,6 +3761,7 @@ function mpFinishJoin() {
 
 // ----- block sync -----
 function mpApplyBlock(m) {
+  if (settings.mode === 'hideandseek') return;
   const x = m.x | 0, y = m.y | 0, z = m.z | 0, id = m.id | 0, dim = m.d === 1;
   if (y < 1 || y >= CHUNK_HEIGHT || Math.abs(x) > 5000000 || Math.abs(z) > 5000000) return;
   if (id !== 0 && (!BLOCK_MAP[id] || id === 9)) return;
@@ -4656,6 +4675,7 @@ function lightNetherPortalFromFrame(bx, by, bz) {
 function handleUseOrPlace(viaKey, targetOverride) {
   if (deadTimer > 0 || hsFrozen()) return;
   if (hsTryTag()) return;
+  if (settings.mode === 'hideandseek') return;
   if (viaKey || touchMode) {
     const ld = getLookDir(), lh = Math.hypot(ld.x, ld.z) || 1;
     const facing = (v) => { const dx = v.x - player.x, dz = v.z - player.z, dl = Math.hypot(dx, dz) || 1; return (dx * ld.x + dz * ld.z) / (dl * lh) > 0.5; };
@@ -4911,6 +4931,7 @@ function removeCart(cart) {
 function handleBreak(targetOverride) {
   if (deadTimer > 0 || hsFrozen()) return;
   if (hsTryTag()) return;
+  if (settings.mode === 'hideandseek') return;
   const target = targetOverride !== undefined ? targetOverride : raycastTarget();
   if (!target) return;
   if (target.type === 'cart') { removeCart(target.cart); return; }
