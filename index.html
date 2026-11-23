@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.8.2</title>
+<title>MinecraftZ v5.8.3</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -170,9 +170,8 @@
   #chatBar { pointer-events: auto; position: fixed; left: 12px; bottom: 112px; width: min(70vw, 320px); display: none; gap: 6px; z-index: 9; }
   #chatBar input { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 6px; border: 2px solid #777; background: rgba(0,0,0,0.8); color: #fff; font-size: 13px; }
   #chatBar #chatSend { padding: 4px 10px; font-size: 13px; }
-  #chatBar.idle { width: min(50vw, 200px); opacity: 0.7; cursor: pointer; }
-  #chatBar.idle input { border-color: #444; background: rgba(0,0,0,0.45); cursor: pointer; }
-  #chatBar.idle #chatSend { display: none; }
+  #chatBar.idle { cursor: pointer; }
+  #chatBar.idle input { cursor: pointer; }
   body.touch #chatBar.idle { display: none !important; }
   #chatBtn { display: none; pointer-events: auto; cursor: pointer; position: fixed; right: 12px; top: 56px; z-index: 7; padding: 6px 12px; border-radius: 8px; background: rgba(0,0,0,0.55); color: #fff; font-size: 13px; border: 1px solid #888; }
   body.touch.ingame #chatBtn { display: block; }
@@ -3390,6 +3389,7 @@ function openChat() {
   setTimeout(() => $('chatIn').focus(), 30);
 }
 function chatSend() {
+  if (screen !== 'chat') { openChat(); return; }
   const msg = $('chatIn').value.trim().slice(0, 120);
   if (!msg) { closeScreen(); return; }
   if (Date.now() - chatLast < 600) return;
