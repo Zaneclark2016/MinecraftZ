@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.4.0</title>
+<title>MinecraftZ v5.5.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -3515,7 +3515,23 @@ function mpHostMsg(conn, m) {
 const HS = { phase: 'lobby', seekers: [], names: {}, endAt: 0, hideSecs: 30, seekSecs: 300, lastSync: 0, shown: 'lobby' };
 const hsActive = () => settings.mode === 'hideandseek' && inGame && (MP.role === 'host' || MP.role === 'client');
 const hsAmSeeker = () => !!MP.myId && HS.seekers.includes(MP.myId);
-const hsFrozen = () => settings.mode === 'hideandseek' && HS.phase === 'hide' && hsAmSeeker();
+// Frozen spectating: when the seek phase starts (hiders) and right after being found, you freeze for a few seconds and watch the seeker's view
+const HS_SPEC_MS = 10000;
+HS.specUntil = 0; HS.prevPhase = 'lobby'; HS.prevSeeker = false;
+function hsWatch() {
+  const now = performance.now(), seeker = hsAmSeeker();
+  if (settings.mode === 'hideandseek' && HS.phase === 'seek') {
+    if (HS.prevPhase === 'hide' && !seeker) HS.specUntil = now + HS_SPEC_MS;
+    else if (HS.prevPhase === 'seek' && !HS.prevSeeker && seeker) HS.specUntil = now + HS_SPEC_MS;
+  } else HS.specUntil = 0;
+  HS.prevPhase = HS.phase; HS.prevSeeker = seeker;
+}
+function hsSpecTarget() {
+  if (settings.mode !== 'hideandseek' || HS.phase !== 'seek' || performance.now() >= HS.specUntil) return null;
+  for (const id of HS.seekers) { if (id === MP.myId) continue; const p = MP.players.get(id); if (p) return p; }
+  return null;
+}
+const hsFrozen = () => settings.mode === 'hideandseek' && ((HS.phase === 'hide' && hsAmSeeker()) || (HS.phase === 'seek' && performance.now() < HS.specUntil));
 const hsLeft = () => Math.max(0, Math.ceil((HS.endAt - performance.now()) / 1000));
 const hsClock = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
 const hsSeekerNames = () => HS.seekers.map(id => HS.names[id] || 'Player').join(', ');
@@ -3608,6 +3624,7 @@ function hsTryTag() {
   return true;
 }
 function hsUi() {
+  hsWatch();
   const on = hsActive();
   const bar = $('hsBar'), blind = $('hsBlind'), btn = $('hsBtn');
   if (!on) { bar.style.display = blind.style.display = btn.style.display = 'none'; return; }
@@ -3618,6 +3635,7 @@ function hsUi() {
     const hidersLeft = hsAllIds().filter(id => !HS.seekers.includes(id)).length;
     t = (hsAmSeeker() ? 'You are a seeker. Tap or click a hider to tag them!' : 'Seekers: ' + hsSeekerNames()) + '  ' + hidersLeft + ' hider' + (hidersLeft === 1 ? '' : 's') + ' left  ' + hsClock(hsLeft());
   }
+  if (HS.phase === 'seek' && performance.now() < HS.specUntil) t = 'Frozen! Watching ' + hsSeekerNames() + ' for ' + Math.ceil((HS.specUntil - performance.now()) / 1000) + 's';
   if (bar.textContent !== t) bar.textContent = t;
   bar.style.display = screen === null || screen === 'chat' ? 'block' : 'none';
   if (hsFrozen()) { blind.style.display = 'flex'; const b = 'You are the seeker!\nCounting... ' + hsLeft(); if (blind.textContent !== b) blind.textContent = b; blind.style.whiteSpace = 'pre-line'; }
@@ -6311,7 +6329,10 @@ function loop(now) {
   const proj = perspective(settings.fov * Math.PI / 180, canvas.width / canvas.height, 0.1, 220.0);
   let view;
   const camMode = settings.view;
-  if (camMode === 'first') {
+  const specT = hsSpecTarget();
+  if (specT) {
+    view = viewMatrix(specT.sx !== undefined ? specT.sx : specT.x, (specT.sy !== undefined ? specT.sy : specT.y) + 1.62, specT.sz !== undefined ? specT.sz : specT.z, specT.syaw !== undefined ? specT.syaw : specT.yaw, specT.pitch || 0);
+  } else if (camMode === 'first') {
     view = viewMatrix(player.x, eyeY, player.z, player.yaw, player.pitch);
   } else {
     // camera sits on the line through the head along the view direction, pulled in front of walls
