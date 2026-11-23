@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.8.4</title>
+<title>MinecraftZ v5.8.5</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -4138,10 +4138,12 @@ async function loadPublic() {
     const d = await cloudReq(CLOUD_API, '/api/public');
     const now = d.now || Date.now();
     box.textContent = '';
-    if (!d.worlds || !d.worlds.length) { box.textContent = 'No public worlds yet. Create one and set it to Public.'; return; }
-    for (const pw of d.worlds) {
+    // only worlds somebody is playing in right now (players ping every 60s while the game is open)
+    const liveWorlds = (d.worlds || []).filter(pw => now - pw.seen < 130000);
+    if (!liveWorlds.length) { box.textContent = 'Nobody is playing in a public world right now. Create one and set it to Public to start one.'; return; }
+    for (const pw of liveWorlds) {
       const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 2px;border-bottom:1px solid #333';
-      const live = now - pw.seen < 300000;
+      const live = true;
       const lab = document.createElement('span'); lab.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
       lab.textContent = pw.name + ' (' + pw.mode + ') ' + (live ? '- active now' : '- seen ' + timeAgo(pw.seen));
       const bt = document.createElement('button'); bt.className = 'btn'; bt.style.cssText = 'margin:0;padding:3px 12px'; bt.textContent = 'Join';
