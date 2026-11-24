@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.10.2</title>
+<title>MinecraftZ v5.10.3</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -3369,7 +3369,7 @@ function cloudSendPresence(dt) {
 function cloudSetSign(k,v){if(String(k).startsWith('~p_')){cloudPresence(String(k).slice(3),v);return;}if(String(k).startsWith('~c_')){cloudChat(String(k).slice(3),v);return;}const m=/^(-?\d+)_(\d+)_(-?\d+)$/.exec(k);if(!m)return;const key=m[1]+','+m[2]+','+m[3];if(v===null||typeof v!=='object')signs.delete(key);else signs.set(key,{text:cleanSign(v.t),face:v.f===1?1:0});markChunkDirty(Math.floor(+m[1]/CHUNK_SIZE),Math.floor(+m[3]/CHUNK_SIZE));}
 function cloudApply(path,data){const p=String(path).split('/').filter(Boolean);if(!p.length){if(data&&typeof data==='object'){if(data.edits)cloudApply('/edits',data.edits);if(data.signs)cloudApply('/signs',data.signs);}}else if(p[0]==='edits'){if(p.length===1&&Array.isArray(data))for(const e of data)cloudSetCell(e.chunk,e.blockIndex,e.value);else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudApply('/edits/'+k,data[k]);else if(p.length===2&&data&&typeof data==='object')for(const i in data)cloudSetCell(p[1],i,data[i]);else if(p.length===3&&data!==null)cloudSetCell(p[1],p[2],data);}else if(p[0]==='signs'){if(p.length===1&&Array.isArray(data))for(const e of data){let v=null;try{v=JSON.parse(e.value);}catch(x){}cloudSetSign(e.coords,v);}else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudSetSign(k,data[k]);else if(p.length===2){let v=data;if(typeof v==='string'){try{v=JSON.parse(v);}catch(e){v=null;}}cloudSetSign(p[1],v);}}}
 function cloudApplySnapshot(d){if(!d)return;if(Array.isArray(d.edits))cloudApply('/edits',d.edits);if(Array.isArray(d.signs))cloudApply('/signs',d.signs);}
-async function cloudPoll(){if(!isCloud()||cloudPollBusy)return;const w=currentWorld;cloudPollBusy=true;try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+w.cid,'GET',undefined,w.cloudToken);if(currentWorld===w)cloudApplySnapshot(d);}catch(e){if(currentWorld===w)$('cloudDot').textContent='Cloud: '+e.message;}finally{cloudPollBusy=false;}}
+async function cloudPoll(){if(!isCloud()||cloudPollBusy)return;const w=currentWorld;cloudPollBusy=true;try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+w.cid+(w.cloudVer?'?v='+w.cloudVer:''),'GET',undefined,w.cloudToken);if(d&&d.ver)w.cloudVer=d.ver;if(currentWorld===w&&!(d&&d.unchanged))cloudApplySnapshot(d);}catch(e){if(currentWorld===w)$('cloudDot').textContent='Cloud: '+e.message;}finally{cloudPollBusy=false;}}
 function cloudStart(){cloudStop();const w=currentWorld;cloudTimer=setInterval(()=>{cloudFlush(false);if(cloudDirty)cloudPersistPend(w);},700);cloudPollLoop(w);}
 function cloudPollLoop(w){ // polls every 2.5s with company, every 10s alone, every 20s while the tab is hidden
   if (currentWorld !== w || !isCloud()) return;

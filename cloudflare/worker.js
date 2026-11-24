@@ -120,7 +120,7 @@ export default {
         headers.set("x-world-id", id);
 
         if (parts.length === 3 && request.method === "GET") {
-          return cors(await stub.fetch("https://world.internal/world", { headers }));
+          return cors(await stub.fetch("https://world.internal/world" + url.search, { headers }));
         }
         if (parts[3] === "ping" && request.method === "POST") {
           const r = await stub.fetch("https://world.internal/ping", { method: "POST", headers });
@@ -176,6 +176,8 @@ export class World {
   constructor(ctx) {
     this.ctx = ctx;
     this.sql = ctx.storage.sql;
+    this.ver = Date.now();   // bumps on every edit/sign write; clients send ?v= so unchanged worlds cost no row reads
+    this.snap = null;
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS world (id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL, meta TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS invites (token_hash TEXT PRIMARY KEY, role TEXT NOT NULL);
@@ -260,11 +262,12 @@ export class World {
 
       if (url.pathname === "/world" && request.method === "GET") {
         if (meta.visibility !== "public" && !role) return json({ error: "This world is private. An invite is required." }, 403);
-        return json({
-          id: world.id, meta, role: role || "visitor",
+        if (url.searchParams.get("v") === String(this.ver)) return json({ unchanged: true, ver: this.ver, role: role || "visitor" });
+        if (!this.snap) this.snap = {
           edits: this.sql.exec("SELECT chunk, block_index AS blockIndex, value FROM edits").toArray(),
           signs: this.sql.exec("SELECT coords, value FROM signs").toArray()
-        });
+        };
+        return json({ id: world.id, meta, role: role || "visitor", ver: this.ver, edits: this.snap.edits, signs: this.snap.signs });
       }
 
       if (url.pathname === "/invites" && request.method === "POST") {
@@ -288,6 +291,7 @@ export class World {
             edit.chunk, edit.blockIndex, edit.value
           );
         }
+        this.ver++; this.snap = null;
         return json({ ok: true, saved: body.edits.length });
       }
 
@@ -303,6 +307,7 @@ export class World {
             sign.coords, sign.value
           );
         }
+        this.ver++; this.snap = null;
         return json({ ok: true, saved: body.signs.length });
       }
 
