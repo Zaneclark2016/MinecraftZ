@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.9.1</title>
+<title>MinecraftZ v5.10.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -4463,6 +4463,7 @@ window.addEventListener('keydown', (e) => {
       renderHotbar();
     }
   }
+  if (e.code === 'KeyC' && ridingCart) { settings.view = settings.view === 'third' ? 'first' : 'third'; $('sView').value = settings.view; saveSettings(); return; }
   if (e.code === 'KeyC' || e.code === 'KeyI') openScreen('inv');
   if (e.code === 'KeyV') { cycleView(); return; }
   if (e.code === 'KeyB' && brawlWorld && brawl.phase === 'break') { brawlOpenShop(); return; }
@@ -4773,7 +4774,8 @@ function mountCart(cart) {
   ridingCart = cart;
   player.noclip = false;
   player.vx = player.vy = player.vz = 0;
-  document.getElementById('mode').textContent = 'Riding Minecart ([W/S] Drive, [F] Exit)';
+  cart.rhx = undefined;
+  document.getElementById('mode').textContent = 'Riding Minecart ([W/S] Drive, [C] Camera, [F] Exit)';
 }
 
 function dismountCart() {
@@ -5990,10 +5992,28 @@ function updateMinecarts(dt) {
       // The mobile joystick's vertical axis drives the cart just like W/S.
       throttle = Math.max(-1, Math.min(1, throttle + (touchMode ? touchMove.y : 0)));
 
+      // On rails the cart drives along the track and the camera follows it, so you never have to steer with the mouse
+      let dX = fwdX, dZ = fwdZ;
+      if (onTrack) {
+        const inf = railInfo(bx, by, bz);
+        let tx, tz;
+        if (inf.kind === 'curve') {
+          const ccx = bx + 0.5 + inf.sx * 0.5, ccz = bz + 0.5 + inf.sz * 0.5;
+          const rx = cart.x - ccx, rz = cart.z - ccz, rl = Math.hypot(rx, rz) || 0.5;
+          tx = -rz / rl; tz = rx / rl;
+        } else if (inf.axis === 'x') { tx = 1; tz = 0; } else { tx = 0; tz = 1; }
+        if (cart.rhx === undefined) { cart.rhx = fwdX; cart.rhz = fwdZ; }
+        if (tx * cart.rhx + tz * cart.rhz < 0) { tx = -tx; tz = -tz; }
+        cart.rhx = tx; cart.rhz = tz;
+        dX = tx; dZ = tz;
+        const want = Math.atan2(-tx, -tz);
+        let dy = want - player.yaw; dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
+        player.yaw += dy * (1 - Math.exp(-9 * dt));
+      }
       if (throttle !== 0) {
         const accel = onTrack ? 18.0 : 6.0;
-        cart.vx += fwdX * throttle * accel * dt;
-        cart.vz += fwdZ * throttle * accel * dt;
+        cart.vx += dX * throttle * accel * dt;
+        cart.vz += dZ * throttle * accel * dt;
       }
     } else {
       // Gentle push if player walks into an unmounted cart
@@ -6466,7 +6486,7 @@ function loop(now) {
   const promptEl = document.getElementById('prompt');
   if (ridingCart) {
     promptEl.style.display = 'block';
-    promptEl.textContent = 'Riding Minecart — [W/S] Drive | [F] or [E] Dismount';
+    promptEl.textContent = 'Riding Minecart — [W/S] Drive | [C] Camera | [F] or [E] Dismount';
   } else {
     const tgt = raycastTarget();
     if (tgt && tgt.type === 'cart') {
