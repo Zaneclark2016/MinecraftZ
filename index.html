@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.10.1</title>
+<title>MinecraftZ v5.10.2</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -3354,7 +3354,7 @@ function cloudSendPresence(dt) {
   if (!isCloud() || !locked) return;
   cloudPingT -= dt;
   if (cloudPingT <= 0 && currentWorld.vis === 'public' && currentWorld.cloudRole !== 'visitor') { cloudPingT = 60; cloudReq(CLOUD_API, '/api/worlds/' + currentWorld.cid + '/ping', 'POST', {}, currentWorld.ownerToken || currentWorld.cloudToken).catch(() => {}); }
-  cloudPresT -= dt; if (cloudPresT > 0) return; cloudPresT = 2;
+  cloudPresT -= dt; if (cloudPresT > 0) return; cloudPresT = cloudPlayers.size ? 2 : 10;   // alone in the world: check in far less often (saves Cloudflare's free daily request quota)
   const w = currentWorld;
   cloudReq(CLOUD_API, '/api/worlds/' + w.cid + '/players', 'POST', {
     id: settings.pid, name: myName(), x: player.x, y: player.y, z: player.z,
@@ -3370,8 +3370,13 @@ function cloudSetSign(k,v){if(String(k).startsWith('~p_')){cloudPresence(String(
 function cloudApply(path,data){const p=String(path).split('/').filter(Boolean);if(!p.length){if(data&&typeof data==='object'){if(data.edits)cloudApply('/edits',data.edits);if(data.signs)cloudApply('/signs',data.signs);}}else if(p[0]==='edits'){if(p.length===1&&Array.isArray(data))for(const e of data)cloudSetCell(e.chunk,e.blockIndex,e.value);else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudApply('/edits/'+k,data[k]);else if(p.length===2&&data&&typeof data==='object')for(const i in data)cloudSetCell(p[1],i,data[i]);else if(p.length===3&&data!==null)cloudSetCell(p[1],p[2],data);}else if(p[0]==='signs'){if(p.length===1&&Array.isArray(data))for(const e of data){let v=null;try{v=JSON.parse(e.value);}catch(x){}cloudSetSign(e.coords,v);}else if(p.length===1&&data&&typeof data==='object')for(const k in data)cloudSetSign(k,data[k]);else if(p.length===2){let v=data;if(typeof v==='string'){try{v=JSON.parse(v);}catch(e){v=null;}}cloudSetSign(p[1],v);}}}
 function cloudApplySnapshot(d){if(!d)return;if(Array.isArray(d.edits))cloudApply('/edits',d.edits);if(Array.isArray(d.signs))cloudApply('/signs',d.signs);}
 async function cloudPoll(){if(!isCloud()||cloudPollBusy)return;const w=currentWorld;cloudPollBusy=true;try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+w.cid,'GET',undefined,w.cloudToken);if(currentWorld===w)cloudApplySnapshot(d);}catch(e){if(currentWorld===w)$('cloudDot').textContent='Cloud: '+e.message;}finally{cloudPollBusy=false;}}
-function cloudStart(){cloudStop();const w=currentWorld;cloudTimer=setInterval(()=>{cloudFlush(false);if(cloudDirty)cloudPersistPend(w);},700);cloudPoll();cloudPollTimer=setInterval(cloudPoll,2500);}
-function cloudStop(){cloudPlayers.clear();clearInterval(cloudTimer);cloudTimer=null;clearInterval(cloudPollTimer);cloudPollTimer=null;}
+function cloudStart(){cloudStop();const w=currentWorld;cloudTimer=setInterval(()=>{cloudFlush(false);if(cloudDirty)cloudPersistPend(w);},700);cloudPollLoop(w);}
+function cloudPollLoop(w){ // polls every 2.5s with company, every 10s alone, every 20s while the tab is hidden
+  if (currentWorld !== w || !isCloud()) return;
+  cloudPoll();
+  cloudPollTimer = setTimeout(() => cloudPollLoop(w), document.hidden ? 20000 : (cloudPlayers.size ? 2500 : 10000));
+}
+function cloudStop(){cloudPlayers.clear();clearInterval(cloudTimer);cloudTimer=null;clearTimeout(cloudPollTimer);cloudPollTimer=null;}
 window.addEventListener('pagehide',()=>{if(isCloud())cloudFlush(true);});
 async function startCloudWorld(entry){if(cloudLoading)return;chatJoinAt=Date.now();cloudLoading=true;mpToast('Loading cloud world...');try{const d=await cloudReq(CLOUD_API,'/api/worlds/'+entry.cid,'GET',undefined,entry.cloudToken);if(!d||!d.meta)throw Error('World data missing.');const c=d.meta.settings||{};Object.assign(entry,{name:String(d.meta.name||entry.name).slice(0,32),seed:Number(c.seed)||entry.seed,seedText:String(c.seedText||c.seed||entry.seed),mode:['survival','hideandseek'].includes(c.mode)?c.mode:'creative',difficulty:c.difficulty||'normal',mobs:c.mobs!==false,caves:c.caves===true,hsMap:Number(c.hsMap)|0,dayLen:c.dayLen||6,cloudRole:d.role||entry.cloudRole||'visitor'});cloudLoading=false;startWorld(entry,d);lockGame();}catch(e){cloudLoading=false;mpToast('Could not open cloud world: '+e.message);}}
 async function createCloudEntry(entry){try{const d=await cloudReq(CLOUD_API,'/api/worlds','POST',{name:entry.name,visibility:entry.vis==='public'?'public':'private',settings:cloudMeta(entry).settings});Object.assign(entry,{cloud:true,cid:d.id,curl:CLOUD_API,cloudToken:d.ownerToken,ownerToken:d.ownerToken,cloudRole:'owner',epoch:Date.now(),rid:d.id});return true;}catch(e){mpToast('Could not create cloud world: '+e.message);return false;}}
