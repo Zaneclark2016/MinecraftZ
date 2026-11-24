@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.10.0</title>
+<title>MinecraftZ v5.10.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -2477,6 +2477,7 @@ function changeDimension(toNether) {
     const r = portalReturn || { x: 8.5, y: terrainHeight(8, 8) + 3, z: 8.5, yaw: player.yaw, pitch: player.pitch };
     player.x = r.x; player.y = r.y; player.z = r.z; player.yaw = r.yaw; player.pitch = r.pitch;
     portalReturn = null;
+    { const qx = Math.floor(player.x / CHUNK_SIZE), qz = Math.floor(player.z / CHUNK_SIZE); for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) getChunk(qx + dx, qz + dz, true); }   // ground under your feet right away; the rest streams in
     overworldEdits = cloneEditMap(edits);
     mpToast('Returned to the Overworld!');
   }
@@ -2499,7 +2500,7 @@ function clearChunks() {
     if (ch.wvao) gl.deleteVertexArray(ch.wvao);
     if (ch.wvbo) gl.deleteBuffer(ch.wvbo);
   }
-  chunks.clear(); gbCh = null;
+  chunks.clear(); gbCh = null; streamPX = 1e9; streamPending = true;   // make the loader rescan right away after a world swap
   villageChunkKeys.clear();
   villageTraderChunkKeys.clear();
   villagerChunks.clear();
