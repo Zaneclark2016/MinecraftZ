@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.11.0</title>
+<title>MinecraftZ v5.12.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -354,7 +354,7 @@ const gl = canvas.getContext('webgl2', { antialias: false });
 if (!gl) alert('WebGL2 is required to run MinecraftZ.');
 
 // Texture Atlas (16x16 pixel tiles, painted procedurally)
-const T = 16, COLS = 8, ROWS = 19;
+const T = 16, COLS = 8, ROWS = 20;
 const TILE = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, GLASS: 3, LOG_SIDE: 4, LOG_TOP: 5, PLANKS: 6, STONE: 7,
   LEAVES: 8, LADDER_WOOD: 9, TIE: 10, RAIL: 11, CART_OUT: 12, CART_IN: 13, WHEEL: 14, BLACK: 15,
@@ -380,7 +380,8 @@ const TILE = {
   PIG_FACE: 124, COW_FACE: 125, SPIDER_FACE: 126, CREEP_FACE: 127, SKEL_FACE: 128, WOLF_FACE: 129, SHEEP_FACE: 130, CHICK_FACE: 131,
   VILLAGER_ROBE: 132, VILLAGER_PANTS: 133,
   PORTAL: 134, FLINT_ICON: 135, NETHERRACK: 136, VILLAGER_SKIN: 137,
-  DOOR_LOW: 138, DOOR_UP: 139, DOOR_ICON: 140, TRAP: 141, TRAP_ICON: 142, CHEST_TOP: 143, CHEST_SIDE: 144, CHEST_FRONT: 145
+  DOOR_LOW: 138, DOOR_UP: 139, DOOR_ICON: 140, TRAP: 141, TRAP_ICON: 142, CHEST_TOP: 143, CHEST_SIDE: 144, CHEST_FRONT: 145,
+  DUST_OFF: 146, DUST_ON: 147, DUST_ICON: 148, LEVER_ICON: 149, RS_ORE: 150, LAMP_OFF: 151, LAMP_ON: 152
 };
 // Fluids: 90 water source, 91-97 flowing water (distance from the source), 98 falling water;
 // 100 lava source, 101-103 flowing lava, 104 falling lava
@@ -865,6 +866,32 @@ atlasCanvas.height = ROWS * T;
     return [105 + glow, 24 + glow * 0.45, 190 + glow * 0.35, 238];
   });
   paint(TILE.VILLAGER_SKIN, () => { const n = jit(6); return [196 + n, 150 + n, 118 + n]; });
+  oreTile(TILE.RS_ORE, [236, 40, 40], [150, 12, 12]);
+  paint(TILE.DUST_OFF, () => { const n = jit(6); return [110 + n, 10, 10]; });
+  paint(TILE.DUST_ON, () => { const n = jit(10); return [235 + n, 25 + n, 20]; });
+  paint(TILE.DUST_ICON, (x, y) => {
+    const d = Math.hypot(x - 7.5, y - 8.5);
+    if (d > 6.5 || (d > 5 && ((x + y) & 1))) return [0, 0, 0, 0];
+    const n = jit(25); return [200 + n, 20, 18];
+  });
+  paint(TILE.LEVER_ICON, (x, y) => {
+    if (y >= 11 && y <= 14 && x >= 3 && x <= 12) { const n = jit(8); return [120 + n, 120 + n, 124 + n]; }
+    if (x >= 7 && x <= 8 && y >= 2 && y <= 11) { const n = jit(6); return [150 + n, 112 + n, 62 + n]; }
+    if (x >= 6 && x <= 9 && y >= 1 && y <= 3) return [190, 60, 50];
+    return [0, 0, 0, 0];
+  });
+  paint(TILE.LAMP_OFF, (x, y) => {
+    const n = jit(6);
+    if (x === 0 || x === 15 || y === 0 || y === 15) return [70 + n, 50 + n, 40 + n];
+    if ((x >= 3 && x <= 12 && y >= 3 && y <= 12) && (x === 3 || x === 12 || y === 3 || y === 12 || x === 7 || x === 8 || y === 7 || y === 8)) return [95 + n, 66 + n, 50 + n];
+    return [128 + n, 90 + n, 68 + n];
+  });
+  paint(TILE.LAMP_ON, (x, y) => {
+    const n = jit(8);
+    if (x === 0 || x === 15 || y === 0 || y === 15) return [190 + n, 140 + n, 70 + n];
+    if ((x >= 3 && x <= 12 && y >= 3 && y <= 12) && (x === 3 || x === 12 || y === 3 || y === 12 || x === 7 || x === 8 || y === 7 || y === 8)) return [255, 220 + n, 120];
+    return [255, 238 + n, 160 + n];
+  });
   const wood = (n) => [166 + n, 134 + n, 82 + n * 0.8];
   paint(TILE.DOOR_LOW, (x, y) => {
     const n = jit(5);
@@ -1038,6 +1065,67 @@ function chestParse(str) {
 }
 const chestKeyOk = (k) => typeof k === 'string' && /^-?\d+,\d+,-?\d+$/.test(k);
 
+// Redstone: lever item 151 (states 152-161 = orientation*2 + on; 0 floor, 1 wall +z, 2 wall -z, 3 wall +x, 4 wall -x),
+// dust item 188 (states 170-185 = 170 + power), lamp 186 off / 187 on, redstone ore 190.
+const isLever = (id) => id >= 152 && id <= 161;
+const isDust = (id) => id >= 170 && id <= 185;
+const isLamp = (id) => id === 186 || id === 187;
+const isRsConsumer = (id) => isDoor(id) || isTrap(id) || isLamp(id);
+const rsConn = (id) => isDust(id) || isLever(id) || isLamp(id) || isDoor(id) || isTrap(id);
+BLOCK_MAP[151] = { id: 151, name: 'Lever', top: TILE.LOG_SIDE, side: TILE.LOG_SIDE, bot: TILE.LOG_SIDE, icon: TILE.LEVER_ICON, solid: false, transparent: true, hidden: true };
+BLOCK_MAP[188] = { id: 188, name: 'Redstone Dust', top: TILE.DUST_ON, side: TILE.DUST_ON, bot: TILE.DUST_ON, icon: TILE.DUST_ICON, solid: false, transparent: true, hidden: true };
+for (let i = 152; i <= 161; i++) BLOCK_MAP[i] = Object.assign({}, BLOCK_MAP[151], { id: i });
+for (let i = 170; i <= 185; i++) BLOCK_MAP[i] = Object.assign({}, BLOCK_MAP[188], { id: i });
+BLOCK_MAP[186] = { id: 186, name: 'Redstone Lamp', top: TILE.LAMP_OFF, side: TILE.LAMP_OFF, bot: TILE.LAMP_OFF, icon: TILE.LAMP_OFF, solid: true, transparent: false };
+BLOCK_MAP[187] = { id: 187, name: 'Redstone Lamp', top: TILE.LAMP_ON, side: TILE.LAMP_ON, bot: TILE.LAMP_ON, icon: TILE.LAMP_ON, solid: true, transparent: false, hidden: true };
+BLOCK_MAP[190] = { id: 190, name: 'Redstone Ore', top: TILE.RS_ORE, side: TILE.RS_ORE, bot: TILE.RS_ORE, icon: TILE.RS_ORE, solid: true, transparent: false };
+let rsBusy = false;
+const RS_D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const RS_D6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+function rsRelevant(o, n) { return isLever(o) || isLever(n) || isDust(o) || isDust(n) || (o === 0 && isRsConsumer(n)); }
+function rsPowered(a, b, c) {
+  for (const d of RS_D6) if (isLever(getBlock(a + d[0], b + d[1], c + d[2])) && ((getBlock(a + d[0], b + d[1], c + d[2]) - 152) & 1)) return true;
+  for (const d of RS_D4) { const n = getBlock(a + d[0], b, c + d[1]); if (isDust(n) && n > 170) return true; }
+  const up = getBlock(a, b + 1, c);
+  return isDust(up) && up > 170;
+}
+function rsEval(a, b, c) {
+  const id = getBlock(a, b, c);
+  if (id === 186 || id === 187) { const P = rsPowered(a, b, c); if (P && id === 186) setBlock(a, b, c, 187); else if (!P && id === 187) setBlock(a, b, c, 186); }
+  else if (isTrap(id)) { const want = rsPowered(a, b, c) ? 1 : 0; if (((id - 138) & 1) !== want) setBlock(a, b, c, 138 + ((id - 138) & 6) + want); }
+  else if (isDoor(id)) {
+    const ly = id >= 129 ? b - 1 : b, lo = getBlock(a, ly, c), hi = getBlock(a, ly + 1, c);
+    if (!(lo >= 121 && lo <= 128 && hi >= 129 && hi <= 136)) return;
+    const want = (rsPowered(a, ly, c) || rsPowered(a, ly + 1, c)) ? 1 : 0;
+    if (((lo - 121) & 1) !== want) { setBlock(a, ly, c, 121 + ((lo - 121) & 6) + want); setBlock(a, ly + 1, c, 129 + ((hi - 129) & 6) + want); }
+  }
+}
+function rsUpdate(x, y, z) {
+  rsBusy = true;
+  try {
+    const key = (a, b, c) => a + ',' + b + ',' + c;
+    const comp = new Map(), stack = [];
+    const seed = (a, b, c) => { if (isDust(getBlock(a, b, c)) && !comp.has(key(a, b, c))) { comp.set(key(a, b, c), [a, b, c]); stack.push([a, b, c]); } };
+    seed(x, y, z); for (const d of RS_D6) seed(x + d[0], y + d[1], z + d[2]);
+    while (stack.length && comp.size < 1500) { const q = stack.pop(); for (const d of RS_D4) seed(q[0] + d[0], q[1], q[2] + d[1]); }
+    const pw = new Map(), queue = [];
+    for (const [k, q] of comp) {
+      for (const d of RS_D6) { const n = getBlock(q[0] + d[0], q[1] + d[1], q[2] + d[2]); if (isLever(n) && ((n - 152) & 1)) { pw.set(k, 15); queue.push(q); break; } }
+    }
+    for (let i = 0; i < queue.length; i++) {
+      const q = queue[i], v = pw.get(key(q[0], q[1], q[2]));
+      if (v <= 1) continue;
+      for (const d of RS_D4) { const nk = key(q[0] + d[0], q[1], q[2] + d[1]); if (comp.has(nk) && (pw.get(nk) || 0) < v - 1) { pw.set(nk, v - 1); queue.push(comp.get(nk)); } }
+    }
+    const touched = [[x, y, z]];
+    for (const [k, q] of comp) {
+      const np = pw.get(k) || 0;
+      if (getBlock(q[0], q[1], q[2]) !== 170 + np) { setBlock(q[0], q[1], q[2], 170 + np); touched.push(q); }
+    }
+    for (const t of touched) { rsEval(t[0], t[1], t[2]); for (const d of RS_D6) rsEval(t[0] + d[0], t[1] + d[1], t[2] + d[2]); }
+  } finally { rsBusy = false; }
+}
+
 // Non-placeable items (tools, armor, materials)
 const ITEM_DEFS = {
   20: { id: 20, name: 'Stick',            icon: TILE.STICK_ICON },
@@ -1106,7 +1194,7 @@ const ITEM_DEFS = {
   118: { id: 118, name: 'Royal Netherite Relic', icon: TILE.NETH_ICON }
 };
 const ALL_ITEM_IDS = [...ITEMS.map(i => i.id), 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 105, 106, 107, 108, 109, 110, 111, 112, 115, 116, 117, 118];
-ALL_ITEM_IDS.push(120, 137, 146);
+ALL_ITEM_IDS.push(120, 137, 146, 151, 186, 188, 190);
 function itemInfo(id) { return ITEM_DEFS[id] || BLOCK_MAP[id]; }
 function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[id] && ITEM_DEFS[id].armor ? 1 : 64; }
 
@@ -1462,7 +1550,7 @@ function vnoise3(x, y, z, s) {
   return y0 + (y1 - y0) * fz;
 }
 // Tunnels where two noise fields are both near their middle, big caverns where a third is high, ore blobs in what is left
-const ORE_T = { iron: 0.91, gold: 0.945, diamond: 0.962, copper: 0.915 };
+const ORE_T = { iron: 0.91, gold: 0.945, diamond: 0.962, copper: 0.915, red: 0.93 };
 // Same noise as vnoise3/hash3, but the lattice hashes for a whole chunk are computed once and shared (about 10x fewer Math.sin calls)
 function caveGrid(s, kx, ky, kz, cx, cz, maxY) {
   const bx = cx * CHUNK_SIZE, bz = cz * CHUNK_SIZE;
@@ -1488,7 +1576,7 @@ function vn3g(G, wx, y, wz) {
 function caveGrids(cx, cz) {
   return { a1: caveGrid(1, 0.06, 0.09, 0.06, cx, cz, 47), a2: caveGrid(2, 0.06, 0.09, 0.06, cx, cz, 47), big: caveGrid(3, 0.035, 0.07, 0.035, cx, cz, 47),
     lava: caveGrid(21, 0.07, 0.25, 0.07, cx, cz, 5), iron: caveGrid(10, 0.3, 0.3, 0.3, cx, cz, 47), copper: caveGrid(13, 0.3, 0.3, 0.3, cx, cz, 30),
-    gold: caveGrid(11, 0.3, 0.3, 0.3, cx, cz, 11), dia: caveGrid(12, 0.3, 0.3, 0.3, cx, cz, 7) };
+    red: caveGrid(16, 0.3, 0.3, 0.3, cx, cz, 15), gold: caveGrid(11, 0.3, 0.3, 0.3, cx, cz, 11), dia: caveGrid(12, 0.3, 0.3, 0.3, cx, cz, 7) };
 }
 function carveColumn(data, x, z, wx, wz, h, G) {
   for (let y = 2; y <= h; y++) {
@@ -1508,6 +1596,7 @@ function carveColumn(data, x, z, wx, wz, h, G) {
     if (b === 6 && y <= h - 4) {
       if (vn3g(G.iron, wx, y, wz) > ORE_T.iron) data[idx] = 15;
       else if (y <= 30 && vn3g(G.copper, wx, y, wz) > ORE_T.copper) data[idx] = 61;
+      else if (y <= 15 && vn3g(G.red, wx, y, wz) > ORE_T.red) data[idx] = 190;
       else if (y <= 11 && vn3g(G.gold, wx, y, wz) > ORE_T.gold) data[idx] = 16;
       else if (y <= 7 && vn3g(G.dia, wx, y, wz) > ORE_T.diamond) data[idx] = 17;
     }
@@ -2039,9 +2128,9 @@ function setBlock(wx, wy, wz, id) {
   const tkey = wx + ',' + wy + ',' + wz;
   if (oldId === 14 && id !== 14) signs.delete(tkey);
   if (isChest(oldId) && !isChest(id) && chests.has(tkey)) { chests.delete(tkey); if (!cloudApplying && isCloud()) cloudQueueChest(tkey, null); }
-  if (oldId === 11) torches.delete(tkey);
-  if (id === 11) torches.set(tkey, [wx, wy, wz]);
-  if (id === 11 || oldId === 11) markLightArea(wx, wz);
+  if (oldId === 11 || oldId === 187) torches.delete(tkey);
+  if (id === 11 || id === 187) torches.set(tkey, [wx, wy, wz]);
+  if (id === 11 || oldId === 11 || id === 187 || oldId === 187) markLightArea(wx, wz);
   else if (torches.size) {
     for (const t of torches.values()) {
       if (Math.abs(t[0] - wx) <= LR && Math.abs(t[2] - wz) <= LR) markLightArea(t[0], t[2]);
@@ -2065,6 +2154,7 @@ function setBlock(wx, wy, wz, id) {
   const fluidDerived = (isFluid(id) && !isFluidSource(id)) || (id === 0 && isFluid(oldId) && !isFluidSource(oldId));
   if (!mpApplying && MP.role !== 'none' && !fluidDerived) mpSendBlock(wx, wy, wz, id);
   if (!cloudApplying && isCloud() && !fluidDerived) { cloudQueueBlock(wx, wy, wz, id); if (oldId === 14 && id !== 14) cloudQueueSign(tkey, null); }
+  if (!rsBusy && !mpApplying && !cloudApplying && rsRelevant(oldId, id)) rsUpdate(wx, wy, wz);
 }
 
 function markChunkDirty(cx, cz) {
@@ -2397,6 +2487,34 @@ function buildChunkMesh(ch) {
           continue;
         }
 
+        if (isDust(id)) {
+          const pw = id - 170, tl = pw > 0 ? TILE.DUST_ON : TILE.DUST_OFF;
+          const cn = RS_D4.map((d) => rsConn(getBlock(wx + d[0], y, wz + d[1])));
+          const any = cn[0] || cn[1] || cn[2] || cn[3];
+          pushBox(verts, x + 0.3, y, z + 0.3, x + 0.7, y + 0.03, z + 0.7, tl, tl, tl, lb);
+          if (cn[0] || !any) pushBox(verts, x + 0.7, y, z + 0.4, x + 1, y + 0.03, z + 0.6, tl, tl, tl, lb);
+          if (cn[1] || !any) pushBox(verts, x, y, z + 0.4, x + 0.3, y + 0.03, z + 0.6, tl, tl, tl, lb);
+          if (cn[2] || !any) pushBox(verts, x + 0.4, y, z + 0.7, x + 0.6, y + 0.03, z + 1, tl, tl, tl, lb);
+          if (cn[3] || !any) pushBox(verts, x + 0.4, y, z, x + 0.6, y + 0.03, z + 0.3, tl, tl, tl, lb);
+          continue;
+        }
+        if (isLever(id)) {
+          const st = id - 152, ori = st >> 1, on = st & 1;
+          const lv = (a0, a1, h0, h1, b0, b1, t) => {
+            let X0, X1, Y0, Y1, Z0, Z1;
+            if (ori === 0) { X0 = a0; X1 = a1; Y0 = h0; Y1 = h1; Z0 = b0; Z1 = b1; }
+            else if (ori === 1) { X0 = a0; X1 = a1; Y0 = b0; Y1 = b1; Z0 = 1 - h1; Z1 = 1 - h0; }
+            else if (ori === 2) { X0 = a0; X1 = a1; Y0 = b0; Y1 = b1; Z0 = h0; Z1 = h1; }
+            else if (ori === 3) { X0 = 1 - h1; X1 = 1 - h0; Y0 = b0; Y1 = b1; Z0 = a0; Z1 = a1; }
+            else { X0 = h0; X1 = h1; Y0 = b0; Y1 = b1; Z0 = a0; Z1 = a1; }
+            pushBox(verts, x + X0, y + Y0, z + Z0, x + X1, y + Y1, z + Z1, t, t, t, lb);
+          };
+          lv(0.3, 0.7, 0, 0.12, 0.3, 0.7, TILE.STONE);
+          lv(0.45, 0.55, 0.12, 0.4, 0.45, 0.55, TILE.LOG_SIDE);
+          if (on) lv(0.45, 0.55, 0.4, 0.7, 0.6, 0.7, TILE.LOG_SIDE); else lv(0.45, 0.55, 0.4, 0.7, 0.3, 0.4, TILE.LOG_SIDE);
+          continue;
+        }
+
         if (isDoor(id)) {
           const up = id >= 129, st = id - (up ? 129 : 121), b = slabBox(st >> 1, st & 1), dt = up ? TILE.DOOR_UP : TILE.DOOR_LOW;
           pushBox(verts, x + b[0], y, z + b[1], x + b[2], y + 1, z + b[3], dt, dt, dt, lb);
@@ -2623,7 +2741,7 @@ function rebuildTorches() {
   for (const [k, m] of edits) {
     const parts = k.split(',').map(Number);
     for (const [i, id] of m) {
-      if (id !== 11) continue;
+      if (id !== 11 && id !== 187) continue;
       const x = parts[0] * CHUNK_SIZE + (i % CHUNK_SIZE), z = parts[1] * CHUNK_SIZE + (Math.floor(i / CHUNK_SIZE) % CHUNK_SIZE), y = Math.floor(i / (CHUNK_SIZE * CHUNK_SIZE));
       torches.set(x + ',' + y + ',' + z, [x, y, z]);
     }
@@ -2791,6 +2909,8 @@ shaped(14, 3, ['PPP', 'PPP', '.S.'], { P: 5, S: 20 });
 shaped(120, 3, ['PP', 'PP', 'PP'], { P: 5 });
 shaped(137, 2, ['PPP', 'PPP'], { P: 5 });
 shaped(146, 1, ['PPP', 'P.P', 'PPP'], { P: 5 });
+shaped(151, 1, ['S', 'C'], { S: 20, C: 6 });
+shaped(186, 1, ['.R.', 'RPR', '.R.'], { R: 188, P: 5 });
 shapeless(48, 2, [6]);
 shapeless(49, 2, [6, 6, 6, 2, 2]);
 shapeless(50, 2, [6, 13]);
@@ -5083,6 +5203,7 @@ function handleUseOrPlace(viaKey, targetOverride) {
     if (isDoor(tid)) { toggleDoor(target.bx, target.by, target.bz); return; }
     if (isTrap(tid)) { setBlock(target.bx, target.by, target.bz, 138 + ((tid - 138) ^ 1)); return; }
     if (isChest(tid)) { openChest(target.bx, target.by, target.bz); return; }
+    if (isLever(tid)) { setBlock(target.bx, target.by, target.bz, 152 + ((tid - 152) ^ 1)); return; }
   }
 
   const slot = heldSlot();
@@ -5191,6 +5312,21 @@ function handleUseOrPlace(viaKey, targetOverride) {
     consumeHeld();
     return;
   }
+  if (item.id === 151) {
+    const ddx = target.bx - px, ddy = target.by - py, ddz = target.bz - pz;
+    if (!isSolidAt(target.bx, target.by, target.bz)) { mpToast('A lever needs a solid block to sit on'); return; }
+    const ori = ddy === -1 ? 0 : ddz === 1 ? 1 : ddz === -1 ? 2 : ddx === 1 ? 3 : ddx === -1 ? 4 : -1;
+    if (ori < 0) { mpToast('Put the lever on a floor or wall'); return; }
+    setBlock(px, py, pz, 152 + ori * 2);
+    consumeHeld();
+    return;
+  }
+  if (item.id === 188) {
+    if (!isSolidAt(px, py - 1, pz)) { mpToast('Redstone dust needs solid ground'); return; }
+    setBlock(px, py, pz, 170);
+    consumeHeld();
+    return;
+  }
   // Prevent placing solid blocks inside player body
   if (item.solid) {
     const overlapX = (px + 1 > player.x - 0.3) && (px < player.x + 0.3);
@@ -5218,7 +5354,9 @@ function handleUseOrPlace(viaKey, targetOverride) {
 }
 
 // What each block turns into when broken (0 = nothing)
-const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 45: 7, 46: 7, 47: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14, 48: 48, 49: 49, 50: 50, 51: 51, 52: 52, 53: 53, 54: 54, 55: 55, 56: 56, 57: 57, 58: 58, 59: 59, 60: 60, 114: 114, 137: 137, 146: 146 };
+const DROP_OF = { 1: 2, 2: 2, 3: 0, 4: 4, 5: 5, 6: 6, 7: 7, 45: 7, 46: 7, 47: 7, 8: 8, 10: 10, 11: 11, 12: 12, 13: 13, 14: 14, 48: 48, 49: 49, 50: 50, 51: 51, 52: 52, 53: 53, 54: 54, 55: 55, 56: 56, 57: 57, 58: 58, 59: 59, 60: 60, 114: 114, 137: 137, 146: 146, 151: 151, 186: 186, 187: 186, 188: 188 };
+for (let i = 152; i <= 161; i++) DROP_OF[i] = 151;
+for (let i = 170; i <= 185; i++) DROP_OF[i] = 188;
 for (let i = 121; i <= 136; i++) DROP_OF[i] = 120;
 for (let i = 138; i <= 145; i++) DROP_OF[i] = 137;
 for (let i = 147; i <= 150; i++) DROP_OF[i] = 146;
@@ -5226,9 +5364,12 @@ for (let i = 147; i <= 150; i++) DROP_OF[i] = 146;
 const HARDNESS = { 1: 0.6, 2: 0.5, 3: 0.4, 4: 2.0, 5: 1.5, 6: 4.0, 7: 0.4, 45: 0.4, 46: 0.4, 47: 0.4, 8: 0.3, 10: 0.25, 11: 0.1, 12: 0.5, 13: 0.5, 14: 0.5, 15: 6.0, 16: 7.0, 17: 9.0, 61: 5.0, 48: 3.0, 49: 3.0, 50: 0.7, 51: 0.7, 52: 0.3, 53: 15.0, 54: 1.2, 55: 0.5, 56: 0.5, 57: 0.5, 58: 0.5, 59: 1.5, 60: 0.5, 114: 0.5 };
 for (let i = 121; i <= 145; i++) HARDNESS[i] = 1.0;
 for (let i = 147; i <= 150; i++) HARDNESS[i] = 1.5;
+for (let i = 152; i <= 161; i++) HARDNESS[i] = 0.4;
+for (let i = 170; i <= 185; i++) HARDNESS[i] = 0.1;
+HARDNESS[186] = 0.5; HARDNESS[187] = 0.5; HARDNESS[190] = 5.0;
 const STONEY = new Set([6, 48, 49, 59]);   // pickaxes break these quickly
-const ORE_DROP = { 15: 26, 16: 27, 17: 28, 61: 62 };
-const ORE_TIER = { 15: 1, 16: 2, 17: 2, 61: 1 };   // iron ore needs any pickaxe, gold and diamonds need iron or better
+const ORE_DROP = { 15: 26, 16: 27, 17: 28, 61: 62, 190: 188 };
+const ORE_TIER = { 15: 1, 16: 2, 17: 2, 61: 1, 190: 1 };   // iron ore needs any pickaxe, gold and diamonds need iron or better
 // tier: what it can mine. stone / ore / other: how fast it breaks those
 const PICKS = {
   24: { tier: 1, stone: 5, ore: 2, other: 2 },    // wooden
@@ -5266,7 +5407,7 @@ function breakBlock(bx, by, bz) {
   if (isSurvival() && ORE_DROP[id]) {
     const h = heldId();
     const ok = PICKS[h] && PICKS[h].tier >= ORE_TIER[id];
-    if (ok) spawnDrop(bx + 0.5, by + 0.35, bz + 0.5, ORE_DROP[id], 1);
+    if (ok) spawnDrop(bx + 0.5, by + 0.35, bz + 0.5, ORE_DROP[id], id === 190 ? 4 : 1);
     else mpToast(ORE_TIER[id] > 1 ? 'You need an iron pickaxe or better to get anything from this' : 'You need a pickaxe to get anything from this');
     return;
   }
