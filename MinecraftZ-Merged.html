@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.12.0</title>
+<title>MinecraftZ v5.12.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -294,6 +294,7 @@
     <div class="row" id="rowMobs"><span>Mobs (Survival)</span><input type="checkbox" id="sMobs"></div>
     <div class="row"><span>Day Length</span><input type="range" id="sDay" min="2" max="20" step="1"><span class="val" id="vDay"></span></div>
     <div class="row"><span>Render Distance</span><input type="range" id="sRender" min="2" max="8" step="1"><span class="val" id="vRender"></span></div>
+    <div class="row"><span>Resolution (lower = faster)</span><input type="range" id="sScale" min="40" max="100" step="10"><span class="val" id="vScale"></span></div>
     <div class="row"><span>Cloud worlds</span><input type="text" id="sCloud" value="https://minecraftz-worlds.zaneclark16.workers.dev" readonly style="width:290px"><button class="btn" id="sCloudTest" style="margin:0 0 0 6px;padding:4px 12px">Test</button></div>
     <div class="hint" id="sCloudMsg">Secure MinecraftZ cloud service. No separate database setup needed.</div>
     <div class="row"><span>Weather (rain and storms)</span><input type="checkbox" id="sWeather"></div>
@@ -1200,7 +1201,10 @@ function stackMax(id) { return ITEM_DEFS[id] && ITEM_DEFS[id].tool || ITEM_DEFS[
 
 // ---------- Settings ----------
 const SETTINGS_KEY = 'minecraftz_settings_v7';
-const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true, name: '', online: true, view: 'first', touch: 'auto', cloudUrl: '', weather: true, relay: '', autoJump: false };
+const settings = { mode: 'creative', difficulty: 'normal', mobs: true, dayLen: 6, renderDist: 4, fov: 70, sens: 100, fog: true, hud: true, name: '', online: true, view: 'first', touch: 'auto', cloudUrl: '', weather: true, relay: '', autoJump: false, scale: 100 };
+// Render resolution: the 3D view is drawn at this % of the window size and stretched, which speeds up slow graphics chips
+const renderW = () => Math.max(160, Math.round(window.innerWidth * (settings.scale || 100) / 100));
+const renderH = () => Math.max(90, Math.round(window.innerHeight * (settings.scale || 100) / 100));
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
 if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(settings.pid || '')) {
   const al = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = '';
@@ -2792,6 +2796,7 @@ function syncSettingsUI() {
   $('sMobs').checked = settings.mobs;     $('sMobs').disabled = true;
   $('sDay').value = dl; $('sDay').disabled = true; $('vDay').textContent = dl + ' min';
   $('sRender').value = settings.renderDist; $('vRender').textContent = settings.renderDist;
+  $('sScale').value = settings.scale || 100; $('vScale').textContent = (settings.scale || 100) + '%';
   $('sFov').value = settings.fov;      $('vFov').textContent = settings.fov + '°';
   $('sSens').value = settings.sens;    $('vSens').textContent = settings.sens + '%';
   $('sView').value = settings.view;
@@ -2809,6 +2814,7 @@ function applySettings() {
   saveSettings();
 }
 $('sRender').oninput = (e) => { settings.renderDist = +e.target.value; applySettings(); syncSettingsUI(); };
+$('sScale').oninput = (e) => { settings.scale = +e.target.value; saveSettings(); syncSettingsUI(); };
 $('sFov').oninput = (e) => { settings.fov = +e.target.value; applySettings(); syncSettingsUI(); };
 $('sSens').oninput = (e) => { settings.sens = +e.target.value; applySettings(); syncSettingsUI(); };
 $('sView').onchange = (e) => { settings.view = e.target.value; saveSettings(); };
@@ -6678,8 +6684,9 @@ function loop(now) {
     frames = 0; fpsTimer = 0;
   }
   if (!inGame) {
-    if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-      canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    const rw0 = renderW(), rh0 = renderH();
+    if (canvas.width !== rw0 || canvas.height !== rh0) {
+      canvas.width = rw0; canvas.height = rh0;
       gl.viewport(0, 0, canvas.width, canvas.height);
     }
     gl.clearColor(0.35, 0.55, 0.85, 1.0);
@@ -6855,9 +6862,10 @@ function loop(now) {
   document.getElementById('pos').textContent = `${player.x.toFixed(1)}, ${player.y.toFixed(1)}, ${player.z.toFixed(1)} | ${areaName(Math.floor(player.x), player.y, Math.floor(player.z))}`;
 
   // Resize & Render
-  if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+  const rw1 = renderW(), rh1 = renderH();
+  if (canvas.width !== rw1 || canvas.height !== rh1) {
+    canvas.width = rw1;
+    canvas.height = rh1;
     gl.viewport(0, 0, canvas.width, canvas.height);
   }
 
