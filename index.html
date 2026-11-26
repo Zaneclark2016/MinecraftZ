@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.13.0</title>
+<title>MinecraftZ v5.14.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -1084,7 +1084,18 @@ BLOCK_MAP[190] = { id: 190, name: 'Redstone Ore', top: TILE.RS_ORE, side: TILE.R
 let rsBusy = false;
 const RS_D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const RS_D6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
-function rsRelevant(o, n) { return isLever(o) || isLever(n) || isDust(o) || isDust(n) || (o === 0 && isRsConsumer(n)); }
+// every dust linked to the dust at (a,b,c): same level, one step up (if the cell above is open) or one step down (if the neighbouring cell is open)
+function rsLinks(a, b, c, fn) {
+  const upOpen = !isSolidAt(a, b + 1, c);
+  for (const d of RS_D4) {
+    const nx = a + d[0], nz = c + d[1];
+    if (isDust(getBlock(nx, b, nz))) fn(nx, b, nz);
+    if (upOpen && isDust(getBlock(nx, b + 1, nz))) fn(nx, b + 1, nz);
+    if (!isSolidAt(nx, b, nz) && isDust(getBlock(nx, b - 1, nz))) fn(nx, b - 1, nz);
+  }
+}
+const rsSolid = (id) => id !== 0 && !!BLOCK_MAP[id] && !!BLOCK_MAP[id].solid;
+function rsRelevant(o, n) { return rsSolid(o) !== rsSolid(n) || isLever(o) || isLever(n) || isDust(o) || isDust(n) || (o === 0 && isRsConsumer(n)); }
 function rsPowered(a, b, c) {
   for (const d of RS_D6) if (isLever(getBlock(a + d[0], b + d[1], c + d[2])) && ((getBlock(a + d[0], b + d[1], c + d[2]) - 152) & 1)) return true;
   for (const d of RS_D4) { const n = getBlock(a + d[0], b, c + d[1]); if (isDust(n) && n > 170) return true; }
@@ -1108,8 +1119,8 @@ function rsUpdate(x, y, z) {
     const key = (a, b, c) => a + ',' + b + ',' + c;
     const comp = new Map(), stack = [];
     const seed = (a, b, c) => { if (isDust(getBlock(a, b, c)) && !comp.has(key(a, b, c))) { comp.set(key(a, b, c), [a, b, c]); stack.push([a, b, c]); } };
-    seed(x, y, z); for (const d of RS_D6) seed(x + d[0], y + d[1], z + d[2]);
-    while (stack.length && comp.size < 1500) { const q = stack.pop(); for (const d of RS_D4) seed(q[0] + d[0], q[1], q[2] + d[1]); }
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) seed(x + dx, y + dy, z + dz);
+    while (stack.length && comp.size < 1500) { const q = stack.pop(); rsLinks(q[0], q[1], q[2], seed); }
     const pw = new Map(), queue = [];
     for (const [k, q] of comp) {
       for (const d of RS_D6) { const n = getBlock(q[0] + d[0], q[1] + d[1], q[2] + d[2]); if (isLever(n) && ((n - 152) & 1)) { pw.set(k, 15); queue.push(q); break; } }
@@ -1117,7 +1128,7 @@ function rsUpdate(x, y, z) {
     for (let i = 0; i < queue.length; i++) {
       const q = queue[i], v = pw.get(key(q[0], q[1], q[2]));
       if (v <= 1) continue;
-      for (const d of RS_D4) { const nk = key(q[0] + d[0], q[1], q[2] + d[1]); if (comp.has(nk) && (pw.get(nk) || 0) < v - 1) { pw.set(nk, v - 1); queue.push(comp.get(nk)); } }
+      rsLinks(q[0], q[1], q[2], (a, b, c) => { const nk = key(a, b, c); if (comp.has(nk) && (pw.get(nk) || 0) < v - 1) { pw.set(nk, v - 1); queue.push(comp.get(nk)); } });
     }
     const touched = [[x, y, z]];
     for (const [k, q] of comp) {
@@ -2494,13 +2505,24 @@ function buildChunkMesh(ch) {
 
         if (isDust(id)) {
           const pw = id - 170, tl = pw > 0 ? TILE.DUST_ON : TILE.DUST_OFF;
-          const cn = RS_D4.map((d) => rsConn(getBlock(wx + d[0], y, wz + d[1])));
+          const stp = [];
+          const cn = RS_D4.map((d) => {
+            const nx = wx + d[0], nz = wz + d[1];
+            const upL = isDust(getBlock(nx, y + 1, nz)) && !isSolidAt(wx, y + 1, wz);
+            const dnL = isDust(getBlock(nx, y - 1, nz)) && !isSolidAt(nx, y, nz);
+            stp.push(upL);
+            return rsConn(getBlock(nx, y, nz)) || upL || dnL;
+          });
           const any = cn[0] || cn[1] || cn[2] || cn[3];
           pushBox(verts, x + 0.3, y, z + 0.3, x + 0.7, y + 0.03, z + 0.7, tl, tl, tl, lb);
           if (cn[0] || !any) pushBox(verts, x + 0.7, y, z + 0.4, x + 1, y + 0.03, z + 0.6, tl, tl, tl, lb);
           if (cn[1] || !any) pushBox(verts, x, y, z + 0.4, x + 0.3, y + 0.03, z + 0.6, tl, tl, tl, lb);
           if (cn[2] || !any) pushBox(verts, x + 0.4, y, z + 0.7, x + 0.6, y + 0.03, z + 1, tl, tl, tl, lb);
           if (cn[3] || !any) pushBox(verts, x + 0.4, y, z, x + 0.6, y + 0.03, z + 0.3, tl, tl, tl, lb);
+          if (stp[0]) pushBox(verts, x + 0.97, y, z + 0.4, x + 1, y + 1, z + 0.6, tl, tl, tl, lb);
+          if (stp[1]) pushBox(verts, x, y, z + 0.4, x + 0.03, y + 1, z + 0.6, tl, tl, tl, lb);
+          if (stp[2]) pushBox(verts, x + 0.4, y, z + 0.97, x + 0.6, y + 1, z + 1, tl, tl, tl, lb);
+          if (stp[3]) pushBox(verts, x + 0.4, y, z, x + 0.6, y + 1, z + 0.03, tl, tl, tl, lb);
           continue;
         }
         if (isLever(id)) {
