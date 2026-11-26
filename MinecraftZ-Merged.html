@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.14.0</title>
+<title>MinecraftZ v5.14.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -1095,7 +1095,7 @@ function rsLinks(a, b, c, fn) {
   }
 }
 const rsSolid = (id) => id !== 0 && !!BLOCK_MAP[id] && !!BLOCK_MAP[id].solid;
-function rsRelevant(o, n) { return rsSolid(o) !== rsSolid(n) || isLever(o) || isLever(n) || isDust(o) || isDust(n) || (o === 0 && isRsConsumer(n)); }
+function rsRelevant(o, n) { return (!isDoor(o) && !isDoor(n) && !isTrap(o) && !isTrap(n) && rsSolid(o) !== rsSolid(n)) || isLever(o) || isLever(n) || isDust(o) || isDust(n) || (o === 0 && isRsConsumer(n)); }
 function rsPowered(a, b, c) {
   for (const d of RS_D6) if (isLever(getBlock(a + d[0], b + d[1], c + d[2])) && ((getBlock(a + d[0], b + d[1], c + d[2]) - 152) & 1)) return true;
   for (const d of RS_D4) { const n = getBlock(a + d[0], b, c + d[1]); if (isDust(n) && n > 170) return true; }
@@ -2663,8 +2663,25 @@ const hlVao = gl.createVertexArray();
 const hlVbo = gl.createBuffer();
 gl.bindVertexArray(hlVao);
 gl.bindBuffer(gl.ARRAY_BUFFER, hlVbo);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(hlVerts), gl.STATIC_DRAW);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(hlVerts), gl.DYNAMIC_DRAW);
 setupAttribs();
+// the outline hugs thin blocks (doors, trapdoors, chests, dust) instead of always being a full cube
+let hlKey = '';
+function hlFit(id) {
+  let b = [0, 0, 0, 1, 1, 1];
+  if (isDoor(id)) { const st = id - (id >= 129 ? 129 : 121), q = slabBox(st >> 1, st & 1); b = [q[0], 0, q[1], q[2], 1, q[3]]; }
+  else if (isTrap(id)) { const st = id - 138; if (st & 1) { const q = slabBox(st >> 1, 0); b = [q[0], 0, q[1], q[2], 1, q[3]]; } else b = [0, 0, 0, 1, 0.1875, 1]; }
+  else if (isChest(id)) b = [0.0625, 0, 0.0625, 0.9375, 0.875, 0.9375];
+  else if (isDust(id)) b = [0, 0, 0, 1, 0.06, 1];
+  const k = b.join(',');
+  if (k === hlKey) return;
+  hlKey = k;
+  const a = [b[0] - 0.005, b[1] - 0.005, b[2] - 0.005, b[3] + 0.005, b[4] + 0.005, b[5] + 0.005], v = [];
+  const E = [[0,1,2, 3,1,2], [3,1,2, 3,1,5], [3,1,5, 0,1,5], [0,1,5, 0,1,2], [0,4,2, 3,4,2], [3,4,2, 3,4,5], [3,4,5, 0,4,5], [0,4,5, 0,4,2], [0,1,2, 0,4,2], [3,1,2, 3,4,2], [3,1,5, 3,4,5], [0,1,5, 0,4,5]];
+  for (const e of E) v.push(a[e[0]], a[e[1]], a[e[2]], hlU, hlV, 1, 0, a[e[3]], a[e[4]], a[e[5]], hlU, hlV, 1, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, hlVbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.DYNAMIC_DRAW);
+}
 
 // Player State
 const player = {
@@ -7039,6 +7056,7 @@ function loop(now) {
     const tgt = raycastTarget();
     if (tgt && tgt.type === 'block') {
       gl.bindVertexArray(hlVao);
+      hlFit(tgt.id);
       gl.uniform3f(uOffsetLoc, tgt.bx, tgt.by, tgt.bz);
       gl.drawArrays(gl.LINES, 0, 24);
     }
