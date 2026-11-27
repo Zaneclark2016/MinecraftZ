@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.15.0</title>
+<title>MinecraftZ v5.15.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -4314,8 +4314,9 @@ function walkAnimStep(anim, speed, dt) {
 function drawPlayerModel(ox, oy, oz, yaw, anim) {
   gl.uniform3f(uOffsetLoc, ox, oy, oz);
   gl.uniform1f(uYawLoc, yaw);
+  const sit = !!(anim && anim.sit);
   const s = anim ? Math.sin(anim.ph) * anim.amp * 0.85 : 0;
-  if (Math.abs(s) < 0.002 && !(anim && anim.amp > 0.02)) { gl.uniform1f(uSwingLoc, 0); gl.drawArrays(gl.TRIANGLES, 0, pVertCount); return; }
+  if (!sit && Math.abs(s) < 0.002 && !(anim && anim.amp > 0.02)) { gl.uniform1f(uSwingLoc, 0); gl.drawArrays(gl.TRIANGLES, 0, pVertCount); return; }
   gl.uniform1f(uSwingLoc, 0);
   gl.drawArrays(gl.TRIANGLES, 0, pMark[1]);                           // head + torso
   const limb = (from, to, pivotY, ang) => {
@@ -4323,10 +4324,11 @@ function drawPlayerModel(ox, oy, oz, yaw, anim) {
     gl.uniform1f(uSwingLoc, ang || 1e-4);
     gl.drawArrays(gl.TRIANGLES, from, to - from);
   };
-  limb(pMark[1], pMark[2], 1.35, s);        // arm +x
-  limb(pMark[2], pMark[3], 1.35, -s);       // arm -x
-  limb(pMark[3], pMark[4], 0.65, s);        // leg -x
-  limb(pMark[4], pMark[5], 0.65, -s);       // leg +x
+  // seated (in a minecart): legs stretched out in front, hands forward
+  limb(pMark[1], pMark[2], 1.35, sit ? -0.6 : s);        // arm +x
+  limb(pMark[2], pMark[3], 1.35, sit ? -0.6 : -s);       // arm -x
+  limb(pMark[3], pMark[4], 0.65, sit ? -1.3 : s);        // leg -x
+  limb(pMark[4], pMark[5], 0.65, sit ? -1.3 : -s);       // leg +x
   gl.uniform1f(uSwingLoc, 0);
 }
 const selfAnim = { ph: 0, amp: 0, x: 0, z: 0, init: false };
@@ -7113,7 +7115,8 @@ function loop(now) {
     if (!selfAnim.init || dt <= 0 || Math.hypot(player.x - selfAnim.x, player.z - selfAnim.z) > 5) { selfAnim.x = player.x; selfAnim.z = player.z; selfAnim.init = true; }
     if (dt > 0) walkAnimStep(selfAnim, ridingCart ? 0 : Math.hypot(player.x - selfAnim.x, player.z - selfAnim.z) / dt, dt);
     selfAnim.x = player.x; selfAnim.z = player.z;
-    drawPlayerModel(player.x, ridingCart ? ridingCart.y + 0.3 : player.y, player.z, player.yaw + Math.PI, selfAnim);
+    selfAnim.sit = !!ridingCart;
+    drawPlayerModel(player.x, ridingCart ? ridingCart.y + 0.05 : player.y, player.z, player.yaw + Math.PI, selfAnim);
     gl.uniform1f(uYawLoc, 0);
   }
   mpUpdateTags(proj, view);
