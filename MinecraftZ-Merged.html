@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.15.2</title>
+<title>MinecraftZ v5.16.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -5196,25 +5196,37 @@ function consumeHeld() {
 }
 
 function lightNetherPortalFromFrame(bx, by, bz) {
-  // Activate a complete 4x5 obsidian frame (10 obsidian blocks minimum; corners optional).
-  const orientations = [{ axis: 'x', fixed: bz }, { axis: 'z', fixed: bx }];
-  for (const o of orientations) {
-    for (let y0 = by - 4; y0 <= by; y0++) {
-      for (let start = (o.axis === 'x' ? bx : bz) - 3; start <= (o.axis === 'x' ? bx : bz); start++) {
-        const at = (u, y) => o.axis === 'x' ? getBlock(start + u, y, o.fixed) : getBlock(o.fixed, y, start + u);
-        let valid = true;
-        for (let y = 0; y < 5 && valid; y++) for (let u = 0; u < 4; u++) {
-          const edge = y === 0 || y === 4 || u === 0 || u === 3;
-          const id = at(u, y0 + y);
-          if (edge ? id !== 53 : id !== 0) { valid = false; break; }
+  // Light any rectangular obsidian frame that is at least 4 wide x 5 tall (2x3 or bigger inside, up to 21x21).
+  // Click any obsidian block of the frame; corners are optional. Works for frames facing either way.
+  const MAXI = 21, D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]], SEEDS = [...D4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  for (const axis of ['x', 'z']) {
+    const at = (u, y) => axis === 'x' ? getBlock(u, y, bz) : getBlock(bx, y, u);
+    const fill = (u, y) => axis === 'x' ? setBlock(u, y, bz, 113) : setBlock(bx, y, u, 113);
+    const u0 = axis === 'x' ? bx : bz;
+    for (const [du, dy] of SEEDS) {
+      const su = u0 + du, sy = by + dy;
+      if (sy < 1 || at(su, sy) !== 0) continue;
+      // flood-fill the empty air inside the frame; anything that is not air or obsidian around it means it is not a frame
+      const seen = new Set([su + ',' + sy]), stack = [[su, sy]];
+      let minU = su, maxU = su, minY = sy, maxY = sy, ok = true;
+      while (stack.length && ok) {
+        const [u, y] = stack.pop();
+        for (const [a, b] of D4) {
+          const nu = u + a, ny = y + b, key = nu + ',' + ny;
+          if (seen.has(key)) continue;
+          const id = ny < 0 ? 53 : at(nu, ny);
+          if (id === 0) {
+            seen.add(key); stack.push([nu, ny]);
+            if (nu < minU) minU = nu; if (nu > maxU) maxU = nu; if (ny < minY) minY = ny; if (ny > maxY) maxY = ny;
+            if (maxU - minU + 1 > MAXI || maxY - minY + 1 > MAXI) { ok = false; break; }
+          } else if (id !== 53) { ok = false; break; }
         }
-        if (!valid) continue;
-        for (let y = 1; y <= 3; y++) for (let u = 1; u <= 2; u++) {
-          if (o.axis === 'x') setBlock(start + u, y0 + y, o.fixed, 113);
-          else setBlock(o.fixed, y0 + y, start + u, 113);
-        }
-        return true;
       }
+      if (!ok) continue;
+      const w = maxU - minU + 1, h = maxY - minY + 1;
+      if (w < 2 || h < 3 || seen.size !== w * h) continue;   // too small, or not a plain rectangle
+      for (let y = minY; y <= maxY; y++) for (let u = minU; u <= maxU; u++) fill(u, y);
+      return true;
     }
   }
   return false;
@@ -5311,7 +5323,7 @@ function handleUseOrPlace(viaKey, targetOverride) {
         mpToast('Nether portal lit!');
         if (isSurvival()) consumeHeld();
       } else {
-        mpToast('Build a 4x5 obsidian frame with an empty 2x3 center');
+        mpToast('Build an obsidian frame at least 4 wide and 5 tall, with nothing inside');
       }
     }
     return;
