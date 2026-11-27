@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.14.4</title>
+<title>MinecraftZ v5.14.5</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -6524,15 +6524,17 @@ function updateMinecarts(dt) {
     }
 
     // Move & block-wall bounce
+    // (checks the cart's own height and the rider's body height, so door tops, upper wall blocks and overhangs stop it too)
+    const cartHit = (hx, hz) => isSolidAt(hx, cart.y + probe, hz) || isSolidAt(hx, cart.y + 0.95, hz);
     const nextX = cart.x + cart.vx * dt;
-    if (isSolidAt(nextX + Math.sign(cart.vx) * 0.4, cart.y + probe, cart.z)) {
+    if (cartHit(nextX + Math.sign(cart.vx) * 0.4, cart.z)) {
       cart.vx = 0;
     } else {
       cart.x = nextX;
     }
 
     const nextZ = cart.z + cart.vz * dt;
-    if (isSolidAt(cart.x, cart.y + probe, nextZ + Math.sign(cart.vz) * 0.4)) {
+    if (cartHit(cart.x, nextZ + Math.sign(cart.vz) * 0.4)) {
       cart.vz = 0;
     } else {
       cart.z = nextZ;
