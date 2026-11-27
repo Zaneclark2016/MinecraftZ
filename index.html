@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.14.3</title>
+<title>MinecraftZ v5.14.4</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -5113,7 +5113,7 @@ function raycastTarget(rayOverride = null) {
     const pz = eyeZ + dir.z * d;
     const bx = Math.floor(px), by = Math.floor(py), bz = Math.floor(pz);
     const id = getBlock(bx, by, bz);
-    if (id !== 0 && isFluid(id) && !(wantFluid && isFluidSource(id))) { prevX = bx; prevY = by; prevZ = bz; continue; }
+    if (id !== 0 && isFluid(id) && !wantFluid) { prevX = bx; prevY = by; prevZ = bz; continue; }
     if (id !== 0 && (isDoor(id) || isTrap(id)) && !thinHit(id, px - bx, py - by, pz - bz)) { prevX = bx; prevY = by; prevZ = bz; continue; }
     if (id !== 0) {
       hitBlock = { bx, by, bz, px: prevX, py: prevY, pz: prevZ, id, dist: d };
@@ -5301,8 +5301,8 @@ function handleUseOrPlace(viaKey, targetOverride) {
 
   // Buckets: scoop up a water or lava source, or pour it out
   if (item.id === 82) {
-    if (target && target.type === 'block' && isFluidSource(target.id)) {
-      const full = target.id === 90 ? 83 : 84;
+    if (target && target.type === 'block' && isFluid(target.id)) {
+      const full = isWater(target.id) ? 83 : 84;
       setBlock(target.bx, target.by, target.bz, 0);
       if (isSurvival()) { slot.id = full; slot.count = 1; renderHotbar(); }
     }
