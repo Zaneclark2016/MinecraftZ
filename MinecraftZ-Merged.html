@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.14.1</title>
+<title>MinecraftZ v5.14.2</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -390,6 +390,7 @@ const TILE = {
 const isWater = (id) => id >= 90 && id <= 98;
 const isLava = (id) => id >= 100 && id <= 104;
 const isFluid = (id) => isWater(id) || isLava(id);
+const isOpenDoor = (id) => id >= 121 && id <= 136 && ((id >= 129 ? id - 129 : id - 121) & 1) === 1;
 const isFluidSource = (id) => id === 90 || id === 100;
 const fluidDist = (id) => (id === 90 || id === 98 || id === 100 || id === 104) ? 0 : (id <= 97 ? id - 90 : id - 100);
 
@@ -2222,6 +2223,8 @@ function fluidNotify(x, y, z, oldId, id) {
   for (const q of [fluidQ.w, fluidQ.l]) {
     q.add(x + ',' + y + ',' + z);
     for (const d of DIRS6) q.add((x + d[0]) + ',' + (y + d[1]) + ',' + (z + d[2]));
+    // liquid also seeps through an open door, so wake the cell on its far side
+    for (const [dx, dz] of H4) if (isOpenDoor(getBlock(x + dx, y, z + dz))) q.add((x + 2 * dx) + ',' + y + ',' + (z + 2 * dz));
   }
 }
 function fluidLoaded(x, z) { return chunks.has(chunkKey(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE))); }
@@ -2244,11 +2247,12 @@ function fluidEval(x, y, z, lava) {
   else {
     let best = 99, srcN = 0;
     for (const [dx, dz] of H4) {
-      const nid = getBlock(x + dx, y, z + dz);
+      let nx = x + dx, nz = z + dz, nid = getBlock(nx, y, nz), extra = 0;
+      if (isOpenDoor(nid)) { nx += dx; nz += dz; nid = getBlock(nx, y, nz); extra = 1; }   // flow through an open door
       if (isFluid(nid) && isLava(nid) === lava) {
         const nd = fluidDist(nid);
-        if (nid === src) srcN++;
-        if (nd < maxD && fluidSupports(getBlock(x + dx, y - 1, z + dz), lava)) best = Math.min(best, nd + 1);
+        if (nid === src && !extra) srcN++;
+        if (nd + extra < maxD && fluidSupports(getBlock(nx, y - 1, nz), lava)) best = Math.min(best, nd + 1 + extra);
       }
     }
     const below = getBlock(x, y - 1, z);
