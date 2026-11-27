@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.14.6</title>
+<title>MinecraftZ v5.15.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -1400,6 +1400,8 @@ uniform mat4 uProj;
 uniform mat4 uView;
 uniform vec3 uOffset;
 uniform float uYaw;
+uniform float uSwing;
+uniform float uPivotY;
 uniform float uFogStart;
 uniform float uFogEnd;
 out vec2 vUV;
@@ -1408,7 +1410,13 @@ out float vBlock;
 out float vFog;
 void main() {
   float cy = cos(uYaw), sy = sin(uYaw);
-  vec3 rp = vec3(cy * aPos.x + sy * aPos.z, aPos.y, -sy * aPos.x + cy * aPos.z);
+  vec3 lp = aPos;
+  if (uSwing != 0.0) {
+    // swing a limb forward/back around its shoulder or hip (used for the walking animation)
+    float cs = cos(uSwing), sn = sin(uSwing), dy = lp.y - uPivotY;
+    lp = vec3(lp.x, uPivotY + cs * dy - sn * lp.z, sn * dy + cs * lp.z);
+  }
+  vec3 rp = vec3(cy * lp.x + sy * lp.z, lp.y, -sy * lp.x + cy * lp.z);
   vec4 worldPos = vec4(rp + uOffset, 1.0);
   vec4 viewPos = uView * worldPos;
   gl_Position = uProj * viewPos;
@@ -1462,6 +1470,8 @@ const uProjLoc = gl.getUniformLocation(prog, 'uProj');
 const uViewLoc = gl.getUniformLocation(prog, 'uView');
 const uOffsetLoc = gl.getUniformLocation(prog, 'uOffset');
 const uYawLoc = gl.getUniformLocation(prog, 'uYaw');
+const uSwingLoc = gl.getUniformLocation(prog, 'uSwing');
+const uPivotYLoc = gl.getUniformLocation(prog, 'uPivotY');
 const uFogStartLoc = gl.getUniformLocation(prog, 'uFogStart');
 const uFogEndLoc = gl.getUniformLocation(prog, 'uFogEnd');
 const uBrightLoc = gl.getUniformLocation(prog, 'uBright');
@@ -4273,15 +4283,18 @@ function mpSendBlock(x, y, z, id) {
 
 // ----- remote players: model and name tags -----
 const pVerts = [];
+const pMark = [];   // vertex index after each part: head, torso, arm +x, arm -x, leg -x, leg +x
 (function buildPlayerModel() {
   const S = TILE.P_SKIN, SH = TILE.P_SHIRT, P = TILE.P_PANTS;
+  const mark = () => pMark.push(pVerts.length / 7);
   pushBox(pVerts, -0.25, 1.35, -0.25, 0.25, 1.85, 0.25, S, S, S);
   pushFace(pVerts, 2, -0.25, 1.35, -0.25, 0.25, 1.85, 0.254, TILE.P_FACE);
-  pushBox(pVerts, -0.25, 0.65, -0.125, 0.25, 1.35, 0.125, SH, SH, SH);
-  pushBox(pVerts, 0.25, 0.65, -0.125, 0.5, 1.35, 0.125, SH, SH, S);
-  pushBox(pVerts, -0.5, 0.65, -0.125, -0.25, 1.35, 0.125, SH, SH, S);
-  pushBox(pVerts, -0.25, 0, -0.125, 0, 0.65, 0.125, P, P, P);
-  pushBox(pVerts, 0, 0, -0.125, 0.25, 0.65, 0.125, P, P, P);
+  mark();
+  pushBox(pVerts, -0.25, 0.65, -0.125, 0.25, 1.35, 0.125, SH, SH, SH); mark();
+  pushBox(pVerts, 0.25, 0.65, -0.125, 0.5, 1.35, 0.125, SH, SH, S); mark();
+  pushBox(pVerts, -0.5, 0.65, -0.125, -0.25, 1.35, 0.125, SH, SH, S); mark();
+  pushBox(pVerts, -0.25, 0, -0.125, 0, 0.65, 0.125, P, P, P); mark();
+  pushBox(pVerts, 0, 0, -0.125, 0.25, 0.65, 0.125, P, P, P); mark();
 })();
 const pVao = gl.createVertexArray();
 const pVbo = gl.createBuffer();
@@ -4291,6 +4304,32 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pVerts), gl.STATIC_DRAW);
 setupAttribs();
 const pVertCount = pVerts.length / 7;
 
+// Walking animation: legs and arms swing opposite each other, scaled by how fast the body is moving.
+// anim = { ph: phase, amp: 0..1 strength }; call walkAnimStep each frame with the horizontal speed.
+function walkAnimStep(anim, speed, dt) {
+  const target = Math.min(1, speed / 3.5);
+  anim.amp += (target - anim.amp) * Math.min(1, dt * 10);
+  anim.ph += Math.min(speed, 10) * dt * 1.25;
+}
+function drawPlayerModel(ox, oy, oz, yaw, anim) {
+  gl.uniform3f(uOffsetLoc, ox, oy, oz);
+  gl.uniform1f(uYawLoc, yaw);
+  const s = anim ? Math.sin(anim.ph) * anim.amp * 0.85 : 0;
+  if (Math.abs(s) < 0.002 && !(anim && anim.amp > 0.02)) { gl.uniform1f(uSwingLoc, 0); gl.drawArrays(gl.TRIANGLES, 0, pVertCount); return; }
+  gl.uniform1f(uSwingLoc, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, pMark[1]);                           // head + torso
+  const limb = (from, to, pivotY, ang) => {
+    gl.uniform1f(uPivotYLoc, pivotY);
+    gl.uniform1f(uSwingLoc, ang || 1e-4);
+    gl.drawArrays(gl.TRIANGLES, from, to - from);
+  };
+  limb(pMark[1], pMark[2], 1.35, s);        // arm +x
+  limb(pMark[2], pMark[3], 1.35, -s);       // arm -x
+  limb(pMark[3], pMark[4], 0.65, s);        // leg -x
+  limb(pMark[4], pMark[5], 0.65, -s);       // leg +x
+  gl.uniform1f(uSwingLoc, 0);
+}
+const selfAnim = { ph: 0, amp: 0, x: 0, z: 0, init: false };
 function mpDrawPlayers(dt) {
   const vis = [...cloudVisiblePlayers()].filter(p => (p.dim === 1) === netherMode);
   if (!vis.length) return;
@@ -4298,12 +4337,13 @@ function mpDrawPlayers(dt) {
   const k = Math.min(1, dt * 12);
   for (const p of vis) {
     if (p.sx === undefined) { p.sx = p.x; p.sy = p.y; p.sz = p.z; p.syaw = p.yaw; }
+    const px0 = p.sx, pz0 = p.sz;
     p.sx += (p.x - p.sx) * k; p.sy += (p.y - p.sy) * k; p.sz += (p.z - p.sz) * k;
     const d = ((p.yaw - p.syaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     p.syaw += d * k;
-    gl.uniform3f(uOffsetLoc, p.sx, p.sy, p.sz);
-    gl.uniform1f(uYawLoc, p.syaw + Math.PI);
-    gl.drawArrays(gl.TRIANGLES, 0, pVertCount);
+    if (!p.anim) p.anim = { ph: 0, amp: 0 };
+    if (dt > 0) walkAnimStep(p.anim, Math.hypot(p.sx - px0, p.sz - pz0) / dt, dt);
+    drawPlayerModel(p.sx, p.sy, p.sz, p.syaw + Math.PI, p.anim);
   }
   gl.uniform1f(uYawLoc, 0);
 }
@@ -7069,9 +7109,11 @@ function loop(now) {
   mpDrawPlayers(dt);
   if (camMode !== 'first' && deadTimer <= 0) {
     gl.bindVertexArray(pVao);
-    gl.uniform3f(uOffsetLoc, player.x, ridingCart ? ridingCart.y + 0.3 : player.y, player.z);
-    gl.uniform1f(uYawLoc, player.yaw + Math.PI);
-    gl.drawArrays(gl.TRIANGLES, 0, pVertCount);
+    // walking animation from how far you actually moved this frame (none while riding a cart)
+    if (!selfAnim.init || dt <= 0 || Math.hypot(player.x - selfAnim.x, player.z - selfAnim.z) > 5) { selfAnim.x = player.x; selfAnim.z = player.z; selfAnim.init = true; }
+    if (dt > 0) walkAnimStep(selfAnim, ridingCart ? 0 : Math.hypot(player.x - selfAnim.x, player.z - selfAnim.z) / dt, dt);
+    selfAnim.x = player.x; selfAnim.z = player.z;
+    drawPlayerModel(player.x, ridingCart ? ridingCart.y + 0.3 : player.y, player.z, player.yaw + Math.PI, selfAnim);
     gl.uniform1f(uYawLoc, 0);
   }
   mpUpdateTags(proj, view);
