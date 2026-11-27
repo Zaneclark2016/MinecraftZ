@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MinecraftZ v5.14.5</title>
+<title>MinecraftZ v5.14.6</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="https://zaneclark2016.github.io/MinecraftZ/minecraft.png">
 <style>
@@ -6413,9 +6413,7 @@ function updateMinecarts(dt) {
         if (tx * cart.rhx + tz * cart.rhz < 0) { tx = -tx; tz = -tz; }
         cart.rhx = tx; cart.rhz = tz;
         dX = tx; dZ = tz;
-        const want = Math.atan2(-tx, -tz);
-        let dy = want - player.yaw; dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
-        player.yaw += dy * (1 - Math.exp(-9 * dt));
+        // the camera is free to look around; on rails W/S always drive along the track, never toward where you look
       }
       if (throttle !== 0) {
         const accel = onTrack ? 18.0 : 6.0;
